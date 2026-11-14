@@ -7,8 +7,7 @@ from app.schemas.common import Input, Patch, Timestamps, UnsignedAmount, Unsigne
 
 Employment = Literal["full_time", "part_time", "contract", "internship", "freelance"]
 WorkMode = Literal["onsite", "hybrid", "remote"]
-Approval = Literal["draft", "pending_approval", "approved", "rejected"]
-Publication = Literal["unpublished", "published", "paused", "closed"]
+JobStatus = Literal["draft", "published", "paused", "closed"]
 
 
 class JobPostCreate(Input):
@@ -26,8 +25,7 @@ class JobPostCreate(Input):
     salary_max: UnsignedAmount | None = None
     currency: str = Field(default="IDR", pattern=r"^[A-Z]{3}$")
     ai_generation_metadata: dict[str, Any] | None = None
-    approval_status: Approval = "draft"
-    publication_status: Publication = "unpublished"
+    status: JobStatus = "draft"
     published_at: datetime | None = None
     closes_at: datetime | None = None
 
@@ -46,8 +44,7 @@ class JobPostUpdate(Patch):
     salary_max: UnsignedAmount | None = None
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     ai_generation_metadata: dict[str, Any] | None = None
-    approval_status: Approval | None = None
-    publication_status: Publication | None = None
+    status: JobStatus | None = None
     published_at: datetime | None = None
     closes_at: datetime | None = None
 
@@ -68,7 +65,6 @@ class JobPostRead(Timestamps):
     salary_max: UnsignedAmount | None
     currency: str
     ai_generation_metadata: dict[str, Any] | None
-    approval_status: str
-    publication_status: str
+    status: str
     published_at: datetime | None
     closes_at: datetime | None

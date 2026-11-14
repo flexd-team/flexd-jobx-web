@@ -1,1 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="14" fill="#14635c"/><path d="m14 14 20 20M34 14 14 34" stroke="#fff" stroke-width="5"/><circle cx="24" cy="24" r="4" fill="#b9f2dd"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="facetTopLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#704bf4"/>
+      <stop offset="100%" stop-color="#552adb"/>
+    </linearGradient>
+    <linearGradient id="facetTopRight" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8d6dfb"/>
+      <stop offset="100%" stop-color="#6e49f5"/>
+    </linearGradient>
+    <linearGradient id="facetBottomLeft" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#5024d9"/>
+      <stop offset="100%" stop-color="#643be7"/>
+    </linearGradient>
+    <linearGradient id="facetBottomRight" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#7e5cf8"/>
+      <stop offset="100%" stop-color="#5b32e0"/>
+    </linearGradient>
+  </defs>
+  <!-- Geometric Stylized X with subtle facet shading -->
+  <polygon points="12,14 36,14 50,42 26,42" fill="url(#facetTopLeft)"/>
+  <polygon points="88,14 64,14 50,42 74,42" fill="url(#facetTopRight)"/>
+  <polygon points="50,42 64,14 88,14 58,50" fill="#7550f7" opacity="0.15"/>
+  <polygon points="26,58 50,58 36,86 12,86" fill="url(#facetBottomLeft)"/>
+  <polygon points="74,58 50,58 64,86 88,86" fill="url(#facetBottomRight)"/>
+  <!-- Central cross connection -->
+  <polygon points="36,14 64,14 88,86 64,86 50,58 36,86 12,86 36,14" fill="none"/>
+  <!-- Primary faceted X paths -->
+  <path d="M14 14 L38 14 L50 38 L62 14 L86 14 L62 50 L86 86 L62 86 L50 62 L38 86 L14 86 L38 50 Z" fill="url(#facetTopRight)"/>
+  <path d="M14 14 L38 14 L50 38 L38 50 L14 14 Z" fill="url(#facetTopLeft)"/>
+  <path d="M14 86 L38 86 L50 62 L38 50 L14 86 Z" fill="url(#facetBottomLeft)"/>
+  <path d="M86 86 L62 86 L50 62 L62 50 L86 86 Z" fill="url(#facetBottomRight)"/>
+</svg>

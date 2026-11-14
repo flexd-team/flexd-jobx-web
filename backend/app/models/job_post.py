@@ -30,15 +30,10 @@ class JobPost(Base):
     salary_max = mapped_column(BIGINT(unsigned=True))
     currency = mapped_column(CHAR(3), nullable=False, server_default="IDR")
     ai_generation_metadata = mapped_column(JSON(none_as_null=True))
-    approval_status = mapped_column(
-        Enum("draft", "pending_approval", "approved", "rejected"),
+    status = mapped_column(
+        Enum("draft", "published", "paused", "closed"),
         nullable=False,
         server_default="draft",
-    )
-    publication_status = mapped_column(
-        Enum("unpublished", "published", "paused", "closed"),
-        nullable=False,
-        server_default="unpublished",
     )
     published_at = mapped_column(DATETIME)
     closes_at = mapped_column(DATETIME)

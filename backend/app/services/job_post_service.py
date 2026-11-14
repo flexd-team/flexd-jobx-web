@@ -11,10 +11,6 @@ from app.utils.exceptions import AppError
 
 def validate_job(values: dict):
     validate_range(values, "salary_min", "salary_max")
-    if values["publication_status"] == "published" and values["approval_status"] != "approved":
-        raise AppError(
-            422, "Validation failed", {"publication_status": "Only approved jobs may be published"}
-        )
 
 
 async def list_job_posts(db: AsyncSession, limit: int, offset: int):
@@ -67,15 +63,12 @@ async def update_job_post(db: AsyncSession, record_id: int, schema: JobPostUpdat
             "work_mode",
             "country",
             "currency",
-            "approval_status",
-            "publication_status",
+            "status",
         )
         validate_job(
             {
                 "salary_min": record.salary_min,
                 "salary_max": record.salary_max,
-                "approval_status": record.approval_status,
-                "publication_status": record.publication_status,
                 **values,
             }
         )

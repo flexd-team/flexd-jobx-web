@@ -1,11 +1,21 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 
-def item_response(message: str, key: str, item: BaseModel) -> dict:
+def item_response(message: str, key: str, item: Any) -> dict:
+    val = None
+    if isinstance(item, BaseModel):
+        val = item.model_dump(mode="json")
+    elif isinstance(item, dict):
+        val = item
+    elif item is not None:
+        val = item
+
     return {
         "message": {"success": message},
         "error": {},
-        "data": {key: item.model_dump(mode="json")},
+        "data": {key: val},
     }
 
 

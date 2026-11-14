@@ -42,7 +42,9 @@ async def create_job_match(db: AsyncSession, schema: JobMatchCreate):
         await require_reference(db, JobPost, schema.job_id, "job_id")
         await require_account_type(db, schema.candidate_user_id, "candidate_user_id", "candidate")
         validate_decisions(schema.candidate_decision, schema.employer_decision, schema.match_status)
-        record = JobMatch(**schema.model_dump())
+        values = schema.model_dump()
+        values.pop("match_status", None)
+        record = JobMatch(**values)
         db.add(record)
         await db.flush()
         await db.refresh(record)
@@ -81,6 +83,7 @@ async def update_job_match(db: AsyncSession, record_id: int, schema: JobMatchUpd
             values.get("employer_decision", record.employer_decision),
             values.get("match_status", record.match_status),
         )
+        values.pop("match_status", None)
         for field, value in values.items():
             setattr(record, field, value)
         await db.flush()

@@ -28,11 +28,6 @@ class JobMatch(Base):
     employer_decision = mapped_column(
         Enum("pending", "accepted", "rejected"), nullable=False, server_default="pending"
     )
-    match_status = mapped_column(
-        Enum("recommended", "one_side_interested", "mutually_accepted", "rejected", "expired"),
-        nullable=False,
-        server_default="recommended",
-    )
     calculated_at = mapped_column(
         DATETIME, nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
@@ -44,3 +39,13 @@ class JobMatch(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         server_onupdate=text("CURRENT_TIMESTAMP"),
     )
+
+    @property
+    def match_status(self) -> str:
+        if self.candidate_decision == "rejected" or self.employer_decision == "rejected":
+            return "rejected"
+        if self.candidate_decision == "accepted" and self.employer_decision == "accepted":
+            return "mutually_accepted"
+        if self.candidate_decision == "accepted" or self.employer_decision == "accepted":
+            return "one_side_interested"
+        return "recommended"

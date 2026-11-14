@@ -16,6 +16,7 @@ from app.routes import (
     auth_route,
     candidate_profile_route,
     company_profile_route,
+    domain_routes,
     github_auth_route,
     github_repository_route,
     job_match_route,
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
         job_post_route.router,
         job_skill_requirement_route.router,
         job_match_route.router,
+        domain_routes.router,
     ):
         app.include_router(router, prefix=settings.app_api_prefix)
     return app
