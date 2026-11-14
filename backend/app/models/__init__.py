@@ -11,10 +11,12 @@ from app.models.job_skill_requirement import JobSkillRequirement
 from app.models.skill import Skill
 from app.models.skill_alias import SkillAlias
 from app.models.user import User
+from app.models.user_oauth_identity import UserOAuthIdentity
 
 __all__ = [
     "Base",
     "User",
+    "UserOAuthIdentity",
     "CandidateProfile",
     "CompanyProfile",
     "Artifact",

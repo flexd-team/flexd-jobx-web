@@ -11,7 +11,7 @@ class User(Base):
     id = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     name = mapped_column(String(150), nullable=False)
     email = mapped_column(String(255), nullable=False, unique=True)
-    password_hash = mapped_column(String(255), nullable=False)
+    password_hash = mapped_column(String(255), nullable=True)
     account_type = mapped_column(Enum("candidate", "employer", "admin"), nullable=False)
     account_status = mapped_column(
         Enum("active", "inactive"), nullable=False, server_default="active"

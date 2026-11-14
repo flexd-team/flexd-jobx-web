@@ -1,5 +1,6 @@
 import { ExampleForm } from '@/components/examples/example-form'
 import { useAppSelector } from '@/hooks/use-app-selector'
+import { Link } from 'react-router-dom'
 
 export default function Home() {
   const workspaceName = useAppSelector((state) => state.app.workspaceName)
@@ -13,7 +14,7 @@ export default function Home() {
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Workspace aktif</p>
           <p className="mt-2 break-words font-semibold">{workspaceName}</p>
         </div>
-        <p className="max-w-md text-sm leading-relaxed text-muted-foreground">Halaman ini hanya scaffold frontend. Login, dashboard admin, dan halaman CRUD belum termasuk.</p>
+        <Link className="inline-block font-semibold text-primary underline underline-offset-4" to="/github">Login dan impor repository GitHub</Link>
       </section>
       <section aria-labelledby="form-title" className="self-start rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
         <div className="mb-7 space-y-2">

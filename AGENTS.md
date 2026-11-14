@@ -71,16 +71,22 @@ backend/
 
 ## Database dan aturan domain
 
-Skema saat ini punya 12 tabel:
+Model skema kini punya 13 tabel; tabel identitas OAuth memerlukan migrasi manual pada DB lama:
 
 ```text
 user                    candidate_profile          company_profile
 artifact                artifact_analysis          artifact_contribution
 artifact_skill_evidence skill                      skill_alias
 job_post                job_skill_requirement      job_match
+user_oauth_identity
 ```
 
 - `candidate_profile` memakai PK `user_id`; tabel lain memakai `id`.
+- `user_oauth_identity` internal, tanpa CRUD publik/admin. Unique `(provider, provider_user_id)`
+  dan `(user_id, provider)`; FK user memakai CASCADE. Tidak menyimpan token atau secret.
+- `user.password_hash` nullable untuk OAuth-only. Login password harus gagal aman ketika null;
+  registrasi password tetap wajib password. OAuth/linking memakai state satu proses untuk dev;
+  jangan mengaktifkannya di produksi tanpa shared store dan audit keamanan.
 - Pertahankan unsigned BIGINT, enum, JSON, precision DECIMAL, nullability, default,
   unique constraint, serta aturan FK CASCADE/RESTRICT/SET NULL.
 - Jangan menjalankan `create_all`, seed, atau migrasi pada startup/DB remote.

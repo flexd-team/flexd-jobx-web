@@ -33,8 +33,9 @@ async def register(db: AsyncSession, schema: Register) -> User:
 
 async def login(db: AsyncSession, schema: Login) -> tuple[User, str]:
     user = await db.scalar(select(User).where(User.email == str(schema.email).lower()))
-    valid = verify_password(schema.password, user.password_hash if user else dummy_hash())
-    if user is None or not valid or user.account_status != "active":
+    stored_hash = user.password_hash if user else None
+    valid = verify_password(schema.password, stored_hash or dummy_hash())
+    if user is None or not stored_hash or not valid or user.account_status != "active":
         raise AppError(401, "Authentication failed", {"auth": "Invalid email or password"})
     return user, create_access_token(user.id)
 
@@ -49,7 +50,8 @@ async def change_password(db: AsyncSession, user_id: int, schema: ChangePassword
         )
         if user is None or user.account_status != "active":
             raise AppError(401, "Authentication failed", {"auth": "Account is unavailable"})
-        if not verify_password(schema.current_password, user.password_hash):
+        valid = verify_password(schema.current_password, user.password_hash or dummy_hash())
+        if not user.password_hash or not valid:
             raise AppError(
                 422, "Validation failed", {"current_password": "Password does not match"}
             )

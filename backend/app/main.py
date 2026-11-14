@@ -16,6 +16,8 @@ from app.routes import (
     auth_route,
     candidate_profile_route,
     company_profile_route,
+    github_auth_route,
+    github_repository_route,
     job_match_route,
     job_post_route,
     job_skill_requirement_route,
@@ -46,6 +48,8 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
     for router in (
         auth_route.router,
+        github_auth_route.router,
+        github_repository_route.router,
         user_route.router,
         candidate_profile_route.router,
         company_profile_route.router,
@@ -68,6 +72,7 @@ application = create_app()
 app = CORSMiddleware(
     application,
     allow_origins=get_settings().app_cors_origins,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
     expose_headers=["X-Request-ID"],

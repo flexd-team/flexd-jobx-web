@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     app_login_window_seconds: int = Field(default=60, ge=1)
     app_register_rate_limit: int = Field(default=5, ge=1)
     app_register_window_seconds: int = Field(default=60, ge=1)
+    app_github_client_id: str = ""
+    app_github_client_secret: SecretStr = SecretStr("")
+    app_github_callback_url: str = "http://localhost:8000/api/v1/auth/github/callback"
+    app_github_frontend_callback_url: str = "http://localhost:5173/auth/github/callback"
 
     db_host: str = "127.0.0.1"
     db_port: int = Field(default=3306, ge=1, le=65535)

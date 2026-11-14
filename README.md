@@ -27,6 +27,62 @@ Run these steps from `backend/`:
 API documentation: <http://localhost:8000/docs>. No startup migrations, `create_all`, seeds,
 DB writes, LLM calls, or S3 calls. Application tables must already exist.
 
+### GitHub OAuth development flow
+
+Model metadata now includes a thirteenth table, `user_oauth_identity`. This is an internal
+identity mapping, not a new CRUD API. GitHub login/register, account linking and public
+repository import are available for local development.
+
+Optional backend settings `APP_GITHUB_CLIENT_ID`, `APP_GITHUB_CLIENT_SECRET`,
+`APP_GITHUB_CALLBACK_URL`, and `APP_GITHUB_FRONTEND_CALLBACK_URL` configure OAuth.
+Keep the client secret only in the ignored backend `.env`; use HTTPS callback URLs outside
+local development and register the exact callback URL in the GitHub OAuth App.
+
+The OAuth implementation uses bounded in-memory state and one-time handoffs. Use exactly one
+backend process: restart interrupts pending authentication and multiple workers cannot share
+state. OAuth authorization is disabled when `APP_ENV=production`; a shared store and security
+review are required before production. Use `localhost` consistently for frontend and backend;
+the browser binding cookie is host scoped. JobX JWT is stored only in Redux memory and is lost
+on page reload or navigation to GitHub. Login again after linking. No GitHub token is persisted.
+The frontend route `/github` includes password login, GitHub login/register, linking and import.
+
+Endpoints: `POST /auth/github/authorize`, `GET /auth/github/callback`,
+`POST /auth/github/exchange`, `POST /auth/github/register`,
+`POST /integrations/github/authorize`, `GET/DELETE /integrations/github/connection`,
+`GET /integrations/github/repositories` and `POST /artifacts/github/import` under `/api/v1`.
+Import only supports public repositories owned by the connected GitHub user. It creates an
+artifact and self-declared contribution but does not fetch source code or run AI analysis.
+Repository listing uses unauthenticated GitHub API and is subject to its IP rate limits.
+
+- `provider` currently supports only `github`; `provider_user_id` stores stable GitHub user ID
+  as a string, never username/email. Tokens and client secrets are not stored in this table.
+- Unique `(provider, provider_user_id)` prevents identity sharing across JobX accounts.
+- Unique `(user_id, provider)` permits one GitHub identity per JobX account.
+- User deletion cascades to its identities through the DB foreign key.
+- `user.password_hash` is nullable for future OAuth-only accounts. Public/admin password
+  registration still requires a password. Password login fails with the same generic 401
+  when no hash exists; change-password still requires the existing password and returns 422
+  for OAuth-only accounts. No first-password or automatic email-based linking flow is added.
+
+Manual migration: `backend/scripts/migrations/001_github_oauth_identity.sql`.
+It is **not executed automatically** and has not been applied by this change.
+
+Before deploying these models to an existing MySQL schema:
+
+1. Back up the target database and review the migration with its operator. Confirm MySQL 8,
+   InnoDB, `user.id` as unsigned BIGINT, and `password_hash` as VARCHAR(255) without custom
+   column attributes that `MODIFY COLUMN` would remove.
+2. Select the intended database explicitly in your SQL client. Inspect existing schema and
+   confirm `user_oauth_identity` does not already exist. Execute the reviewed SQL during a
+   maintenance window. Never pass database passwords in command arguments or commit them.
+3. Verify both unique constraints, foreign key, and nullable password column before deploying.
+
+MySQL DDL implicitly commits; migration is not atomic. If a statement fails, inspect actual
+schema before retrying. No automatic downgrade: restoring NOT NULL fails while OAuth-only
+users exist, and dropping the identity table removes login mappings. Plan recovery with a
+backup; never fill missing hashes with dummy passwords. SQLite tests cover identity uniqueness,
+FK/cascade and password behavior, not live MySQL migration, collation or concurrency.
+
 The development DB connection explicitly disables TLS when `DB_TLS_ENABLED=false`.
 Unencrypted database connections expose traffic to network observers; use a trusted private
 network or SSH tunnel. Enable TLS with certificate validation for production.
