@@ -16,8 +16,10 @@ export async function apiRequest<T extends z.ZodType>(
   if (token) requestHeaders.set('Authorization', `Bearer ${token}`)
 
   let response: Response
+  const normalizedPath = path.replace(/^\/?(api\/v1\/)?/, '').replace(/^\//, '')
+  const targetUrl = `${env.APP_PUBLIC_API_BASE_URL.replace(/\/$/, '')}/${normalizedPath}`
   try {
-    response = await fetch(`${env.APP_PUBLIC_API_BASE_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`, {
+    response = await fetch(targetUrl, {
       ...options,
       headers: requestHeaders,
       body: body === undefined ? undefined : JSON.stringify(body),

@@ -31,6 +31,7 @@ class OAuthTransaction:
     code_verifier: str = field(repr=False)
     expires_at: float
     user_id: int | None = None
+    frontend_callback_url: str | None = None
 
 
 class OAuthStateStore:
@@ -45,7 +46,11 @@ class OAuthStateStore:
         self._lock = Lock()
 
     def create(
-        self, purpose: Literal["login", "link"], browser_binding: str, user_id: int | None = None
+        self,
+        purpose: Literal["login", "link"],
+        browser_binding: str,
+        user_id: int | None = None,
+        frontend_callback_url: str | None = None,
     ) -> tuple[str, OAuthTransaction]:
         if purpose not in ("login", "link") or not browser_binding:
             raise ValueError("Invalid OAuth transaction")
@@ -63,6 +68,7 @@ class OAuthStateStore:
                 code_verifier=secrets.token_urlsafe(64),
                 expires_at=now + self._ttl,
                 user_id=user_id,
+                frontend_callback_url=frontend_callback_url,
             )
             self._items[state] = transaction
             return state, transaction

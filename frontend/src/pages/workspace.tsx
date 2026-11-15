@@ -268,7 +268,11 @@ export default function WorkspacePage() {
             { token: token ?? undefined },
           )
           const analysis = res.data?.artifact_analysis
-          if (analysis && (analysis.analysis_status === 'completed' || attempts > 5)) {
+          if (
+            analysis &&
+            (['completed', 'needs_human_review', 'failed'].includes(analysis.analysis_status) ||
+              attempts >= 15)
+          ) {
             clearInterval(timer)
             setAnalyzingId(null)
             if (analysis.extracted_summary) {
@@ -277,11 +281,14 @@ export default function WorkspacePage() {
                 [artifactId]: analysis.extracted_summary,
               }))
             }
+            if (analysis.analysis_status === 'failed' && analysis.error_message) {
+              setErrorMsg(`Analisis AI gagal: ${analysis.error_message}`)
+            }
             await loadArtifacts()
             await loadEvidences()
           }
         } catch {
-          if (attempts > 3) {
+          if (attempts >= 8) {
             clearInterval(timer)
             setAnalyzingId(null)
           }
@@ -457,8 +464,9 @@ export default function WorkspacePage() {
         {/* Artifacts Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {artifacts.map((art) => {
-            const isAnalyzing = analyzingId === art.id
-            const isCompleted = art.processing_status === 'completed'
+            const isAnalyzing = analyzingId === art.id || art.processing_status === 'processing'
+            const isCompleted =
+              art.processing_status === 'completed' || art.processing_status === 'needs_review'
             return (
               <Card key={art.id} variant="default" className="p-5 space-y-3.5 flex flex-col justify-between">
                 <div className="space-y-2">

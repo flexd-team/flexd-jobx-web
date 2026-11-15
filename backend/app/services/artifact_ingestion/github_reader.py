@@ -24,6 +24,12 @@ MANIFEST_FILES = [
     "docker-compose.yaml",
     "go.mod",
     "Cargo.toml",
+    "build.gradle",
+    "build.gradle.kts",
+    "app/build.gradle",
+    "app/build.gradle.kts",
+    "pom.xml",
+    "Package.swift",
 ]
 
 ENTRY_FILES = [
@@ -36,6 +42,9 @@ ENTRY_FILES = [
     "src/main.ts",
     "src/App.tsx",
     "server.js",
+    "app/src/main/AndroidManifest.xml",
+    "MainActivity.kt",
+    "app/src/main/java/com/zexceed/aniflix/MainActivity.kt",
 ]
 
 
@@ -68,7 +77,23 @@ class GitHubArtifactReader:
             "User-Agent": "JobX-Artifact-Reader/1.0",
         }
 
-        async with httpx.AsyncClient(headers=headers, timeout=self.timeout) as client:
+        auth = None
+        try:
+            from app.configs.settings import get_settings
+
+            settings = get_settings()
+            if (
+                settings.app_github_client_id
+                and settings.app_github_client_secret.get_secret_value()
+            ):
+                auth = (
+                    settings.app_github_client_id,
+                    settings.app_github_client_secret.get_secret_value(),
+                )
+        except Exception:
+            pass
+
+        async with httpx.AsyncClient(headers=headers, auth=auth, timeout=self.timeout) as client:
             repo_res = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
             if repo_res.status_code != 200:
                 err_md = (

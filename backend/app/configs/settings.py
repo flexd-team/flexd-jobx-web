@@ -17,7 +17,18 @@ class Settings(BaseSettings):
     app_name: str = "flexd-jobx-web"
     app_env: Literal["local", "test", "production"] = "local"
     app_api_prefix: str = "/api/v1"
-    app_cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    app_cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://localhost:5175",
+            "http://localhost:5176",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+            "http://127.0.0.1:5175",
+            "http://127.0.0.1:5176",
+        ]
+    )
     app_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     app_login_rate_limit: int = Field(default=10, ge=1)
     app_login_window_seconds: int = Field(default=60, ge=1)

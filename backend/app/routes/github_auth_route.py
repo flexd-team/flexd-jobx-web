@@ -72,7 +72,24 @@ def config_guard():
 async def start(request: Request, response: Response, purpose: str, user_id: int | None = None):
     settings = config_guard()
     browser = secrets.token_urlsafe(32)
-    state, transaction = states.create(purpose, browser, user_id)
+
+    frontend_callback = settings.app_github_frontend_callback_url
+    origin = request.headers.get("origin", "").rstrip("/")
+    if origin:
+        parsed = urlsplit(origin)
+        if parsed.scheme in ("http", "https") and parsed.netloc:
+            if (
+                origin in settings.app_cors_origins
+                or settings.app_env != "production"
+                and parsed.hostname in ("localhost", "127.0.0.1")
+            ):
+                callback_path = (
+                    urlsplit(settings.app_github_frontend_callback_url).path
+                    or "/auth/github/callback"
+                )
+                frontend_callback = f"{origin}{callback_path}"
+
+    state, transaction = states.create(purpose, browser, user_id, frontend_callback)
     async with httpx.AsyncClient() as http:
         url = GitHubClient(settings, http).authorization_url(state, transaction.code_verifier)
     response.set_cookie(
@@ -102,6 +119,25 @@ async def authorize_link(
 @router.get("/auth/github/callback")
 async def callback(request: Request, db: AsyncSession = Depends(get_db)):
     settings = config_guard()
+    oauth_error = request.query_params.get("error", "")
+    if oauth_error:
+        error_desc = request.query_params.get("error_description", "")
+        params = {"error": oauth_error}
+        if error_desc:
+            params["error_description"] = error_desc[:200]
+        frontend_url = settings.app_github_frontend_callback_url
+        state = request.query_params.get("state", "")
+        if state:
+            try:
+                txn = states.consume(state, binding(request))
+                if txn and txn.frontend_callback_url:
+                    frontend_url = txn.frontend_callback_url
+            except Exception:
+                pass
+        separator = "&" if urlsplit(frontend_url).query else "?"
+        target = frontend_url + separator + urlencode(params)
+        return RedirectResponse(target, status_code=303, headers={"Referrer-Policy": "no-referrer"})
+
     state = request.query_params.get("state", "")
     code = request.query_params.get("code", "")
     transaction = states.consume(state, binding(request))
@@ -123,8 +159,13 @@ async def callback(request: Request, db: AsyncSession = Depends(get_db)):
         user = await find_github_user(db, identity)
         payload = ("login", user.id) if user else ("register", identity)
     handoff = handoffs.create(binding(request), payload)
-    separator = "&" if urlsplit(settings.app_github_frontend_callback_url).query else "?"
-    target = settings.app_github_frontend_callback_url + separator + urlencode({"code": handoff})
+    frontend_url = (
+        transaction.frontend_callback_url
+        if transaction and transaction.frontend_callback_url
+        else settings.app_github_frontend_callback_url
+    )
+    separator = "&" if urlsplit(frontend_url).query else "?"
+    target = frontend_url + separator + urlencode({"code": handoff})
     return RedirectResponse(target, status_code=303, headers={"Referrer-Policy": "no-referrer"})
 
 

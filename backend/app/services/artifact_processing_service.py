@@ -12,7 +12,15 @@ from app.agents.shared.contracts import SkillDefinition
 from app.agents.shared.structured_output import LangChainStructuredModel
 from app.configs.database import get_session_factory
 from app.configs.settings import get_settings
-from app.models import Artifact, ArtifactAnalysis, ArtifactSkillEvidence, Skill, SkillAlias, User
+from app.models import (
+    Artifact,
+    ArtifactAnalysis,
+    ArtifactContribution,
+    ArtifactSkillEvidence,
+    Skill,
+    SkillAlias,
+    User,
+)
 from app.services.artifact_ingestion.dispatcher import ArtifactIngestor
 from app.services.artifact_ingestion.github_reader import GitHubArtifactReader
 from app.utils.exceptions import AppError
@@ -108,13 +116,31 @@ async def run_artifact_analysis(analysis_id: int):
         artifact.processing_status = "processing"
         await db.commit()
 
+        contribution = await db.scalar(
+            select(ArtifactContribution)
+            .where(
+                ArtifactContribution.artifact_id == artifact.id,
+                ArtifactContribution.contributor_user_id == artifact.owner_user_id,
+            )
+            .limit(1)
+        )
+        candidate_role = (
+            contribution.role_title
+            if contribution and contribution.role_title
+            else "Software Engineer"
+        )
+        contribution_desc = (
+            contribution.contribution_description
+            if contribution and contribution.contribution_description
+            else (artifact.description or "Developed and configured project components.")
+        )
+
         input_data = ArtifactInput(
             artifact_type=artifact.artifact_type,
             source_url=artifact.source_url,
             storage_key=artifact.storage_key,
-            candidate_role="Software Engineer",
-            contribution_description=artifact.description
-            or "Developed and configured project components.",
+            candidate_role=candidate_role,
+            contribution_description=contribution_desc,
         )
 
     result = None

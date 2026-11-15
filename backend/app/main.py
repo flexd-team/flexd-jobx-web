@@ -71,9 +71,13 @@ def create_app() -> FastAPI:
 
 # CORS wraps even unhandled-error responses. OpenAPI/docs use FastAPI's native format.
 application = create_app()
+settings = get_settings()
 app = CORSMiddleware(
     application,
-    allow_origins=get_settings().app_cors_origins,
+    allow_origins=settings.app_cors_origins,
+    allow_origin_regex=None
+    if settings.app_env == "production"
+    else r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],

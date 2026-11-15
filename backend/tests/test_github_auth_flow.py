@@ -68,3 +68,15 @@ async def test_wrong_browser_cannot_consume_state(api, github_config):
     response = await api.get("/api/v1/auth/github/callback", params={"state": state, "code": "x"})
     assert response.status_code == 400
     api.cookies.set("jobx_github_binding", cookie, domain="test.local", path="/")
+
+
+async def test_github_callback_redirects_on_denied_error(api, github_config):
+    response = await api.get(
+        "/api/v1/auth/github/callback",
+        params={"error": "access_denied", "error_description": "User denied access"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    loc = response.headers["location"]
+    assert "error=access_denied" in loc
+    assert "User+denied+access" in loc or "User%20denied%20access" in loc
