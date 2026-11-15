@@ -12,11 +12,8 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest } from "@/lib/api-client";
-import { artifactTypeLabels, visibilityLabels } from "@/lib/portal-labels";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import { usePortalResource } from "@/hooks/use-portal-resource";
 import {
@@ -27,9 +24,9 @@ import {
   StatusBadge,
 } from "@/components/portal-ui";
 import { ArtifactEditor } from "@/components/artifact-editor";
+import { ArtifactCreateModal } from '@/components/artifact-create-modal';
+import { artifactEvidenceList } from '@/schemas/portal';
 import {
-  artifact,
-  artifactInput,
   artifactList,
   emptyEnvelope,
   envelope,
@@ -242,16 +239,6 @@ export function ArtifactsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const form = useForm<z.infer<typeof artifactInput>>({
-    resolver: zodResolver(artifactInput),
-    defaultValues: {
-      title: "",
-      source_url: "",
-      description: "",
-      artifact_type: "github_repository",
-      visibility: "private",
-    },
-  });
   async function act(id: string, action: "analyze" | "delete" | "analysis") {
     if (
       action === "delete" &&
@@ -314,101 +301,13 @@ export function ArtifactsPage() {
         </Link>
         <button
           className="jx-button primary"
-          onClick={() => setAdding(!adding)}
+          onClick={() => setAdding(true)}
         >
           <Plus size={15} />
           Tambah artifact
         </button>
       </PageHeading>
-      {adding && (
-        <form
-          className="jx-form"
-          onSubmit={form.handleSubmit(async (values) => {
-            setError("");
-            try {
-              await apiRequest(
-                "/my/artifacts",
-                envelope(z.object({ artifact })),
-                { method: "POST", token: token!, body: values },
-              );
-              form.reset();
-              setAdding(false);
-              resource.reload();
-            } catch (err) {
-              setError(
-                err instanceof Error ? err.message : "Artifact gagal disimpan.",
-              );
-            }
-          })}
-        >
-          <h2>Tambahkan tautan karya</h2>
-          <div className="jx-form-grid">
-            <label className="jx-field">
-              Judul
-              <input className="jx-input" {...form.register("title")} />
-              {form.formState.errors.title && (
-                <span role="alert">{form.formState.errors.title.message}</span>
-              )}
-            </label>
-            <label className="jx-field">
-              URL sumber
-              <input
-                className="jx-input"
-                type="url"
-                placeholder="https://github.com/owner/repository"
-                {...form.register("source_url")}
-              />
-              {form.formState.errors.source_url && (
-                <span role="alert">
-                  {form.formState.errors.source_url.message}
-                </span>
-              )}
-            </label>
-            <label className="jx-field">
-              Jenis karya
-              <select className="jx-input" {...form.register("artifact_type")}>
-                {artifactInput.shape.artifact_type.options.map((value) => (
-                  <option key={value} value={value}>{artifactTypeLabels[value]}</option>
-                ))}
-              </select>
-            </label>
-            <label className="jx-field">
-              Visibilitas
-              <select className="jx-input" {...form.register("visibility")}>
-                {artifactInput.shape.visibility.options.map((value) => (
-                  <option key={value} value={value}>{visibilityLabels[value]}</option>
-                ))}
-              </select>
-            </label>
-            <label className="jx-field full">
-              Deskripsi karya
-              <textarea
-                className="jx-input"
-                {...form.register("description")}
-              />
-              <small>
-                Deskripsikan project. Klaim kontribusi tidak otomatis
-                membuktikan kepemilikan seluruh project.
-              </small>
-            </label>
-          </div>
-          <div className="jx-actions">
-            <button
-              className="jx-button primary"
-              disabled={form.formState.isSubmitting}
-            >
-              Simpan artifact
-            </button>
-            <button
-              className="jx-button"
-              type="button"
-              onClick={() => setAdding(false)}
-            >
-              Batal
-            </button>
-          </div>
-        </form>
-      )}
+      {adding && <ArtifactCreateModal onClose={() => setAdding(false)} onSaved={resource.reload}/>}
       <div className="jx-toolbar">
         <SearchField
           value={query}
@@ -454,7 +353,7 @@ export function ArtifactsPage() {
                 </span>
                 <StatusBadge value={item.processing_status} />
               </div>
-              <h2>{item.title}</h2>
+              <h2><Link to={`/candidate/artifacts/${item.id}`}>{item.title}</Link></h2>
               <p>{item.description || "Belum ada deskripsi karya."}</p>
               <div className="jx-record-footer">
                 <StatusBadge value={item.visibility} />
@@ -483,13 +382,7 @@ export function ArtifactsPage() {
                   <Sparkles size={14} />
                   Analisis
                 </button>
-                <button
-                  className="jx-button"
-                  disabled={busy === item.id}
-                  onClick={() => void act(item.id, "analysis")}
-                >
-                  Hasil
-                </button>
+                <Link className="jx-button" to={`/candidate/artifacts/${item.id}`}>Lihat detail</Link>
                 <button
                   className="jx-icon-button"
                   disabled={busy === item.id}
@@ -499,7 +392,9 @@ export function ArtifactsPage() {
                   <Trash2 size={15} />
                 </button>
               </div>
-              <ArtifactEditor item={item} reload={resource.reload} />
+              <div style={{ marginTop: 12 }}>
+                <ArtifactEditor item={item} reload={resource.reload} />
+              </div>
             </article>
           ))}
       </div>
@@ -526,19 +421,18 @@ export function ArtifactsPage() {
   );
 }
 
-export function EvidencePage() {
+export function EvidencePage({ artifactId }: { artifactId?: string } = {}) {
   const token = useAppSelector((s) => s.auth.token);
-  const resource = usePortalResource("/my/skill-evidences", evidenceList);
+  const [evidenceOffset, setEvidenceOffset] = useState(0);
+  const resource = usePortalResource(artifactId ? `/my/artifacts/${artifactId}/skill-evidences?limit=20&offset=${evidenceOffset}` : "/my/skill-evidences", artifactId ? artifactEvidenceList : evidenceList);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   return (
     <>
-      <PageHeading
-        title="Skill Evidence"
-        description="Bukan sekadar klaim. Tinjau sumber, konteks, dan saran skill dari karya Anda."
-      />
+      {artifactId ? <div className="jx-page-heading"><div><h2 className="jx-section-title">Skill Evidence artifact</h2><p>Evidence berasal dari artifact ini; hasil beberapa analisis dapat tercantum bersama.</p></div></div> : <PageHeading title="Skill Evidence" description="Bukan sekadar klaim. Tinjau sumber, konteks, dan saran skill dari karya Anda."/>}
+      {artifactId && resource.data?.data.pagination && <div className="jx-pagination"><button type="button" className="jx-button" disabled={!evidenceOffset || resource.loading} onClick={() => setEvidenceOffset(Math.max(0, evidenceOffset - 20))}>Sebelumnya</button><span>{resource.data.data.pagination.total} evidence</span><button type="button" className="jx-button" disabled={resource.loading || evidenceOffset + 20 >= resource.data.data.pagination.total} onClick={() => setEvidenceOffset(evidenceOffset + 20)}>Berikutnya</button></div>}
       <div className="jx-notice lavender">
         <Sparkles size={17} />
         <p>

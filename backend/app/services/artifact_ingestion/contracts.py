@@ -3,6 +3,10 @@ from typing import Protocol
 from app.agents.shared.contracts import ArtifactContent, ArtifactReference
 
 
+class ArtifactSourceError(Exception):
+    """Reader failure with a user-safe, actionable message."""
+
+
 class ArtifactReader(Protocol):
     async def read(self, reference: ArtifactReference) -> ArtifactContent:
         """Return bounded content and real citations; do not execute source content.

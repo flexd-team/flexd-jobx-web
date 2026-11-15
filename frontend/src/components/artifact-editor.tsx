@@ -4,8 +4,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest } from "@/lib/api-client";
 import { visibilityLabels } from "@/lib/portal-labels";
-import { artifact, envelope } from "@/schemas/portal";
+import { artifact, artifactDetail, envelope, contribution } from "@/schemas/portal";
 import { useAppSelector } from "@/hooks/use-app-selector";
+import { Modal } from '@/components/ui/modal';
+import { usePortalResource } from '@/hooks/use-portal-resource';
+import { ResourceState } from '@/components/portal-ui';
 
 const schema = z
   .object({
@@ -36,6 +39,17 @@ export function ArtifactEditor({
   item: z.infer<typeof artifact>;
   reload: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  return <><button type="button" className="jx-button" onClick={() => setOpen(true)}>Edit artifact</button>{open && <LoadedEditor item={item} reload={reload} onClose={() => setOpen(false)}/>}</>;
+}
+
+function LoadedEditor({item, reload, onClose}: {item: z.infer<typeof artifact>; reload: () => void; onClose: () => void}) {
+  const resource = usePortalResource(`/my/artifacts/${item.id}`, artifactDetail);
+  if (!resource.data) return <Modal title="Edit artifact" onClose={onClose}><ResourceState {...resource} retry={resource.reload}/></Modal>;
+  return <ArtifactEditForm item={resource.data.data.artifact} existing={resource.data.data.artifact_contribution} reload={reload} onClose={onClose}/>;
+}
+
+function ArtifactEditForm({item, existing, reload, onClose}: {item: z.infer<typeof artifact>; existing: z.infer<typeof contribution> | null; reload: () => void; onClose: () => void}) {
   const token = useAppSelector((s) => s.auth.token);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -45,13 +59,12 @@ export function ArtifactEditor({
       title: item.title,
       description: item.description || "",
       visibility: item.visibility as z.infer<typeof schema>["visibility"],
-      role_title: "",
-      contribution_description: "",
+      role_title: existing?.role_title || "",
+      contribution_description: existing?.contribution_description || "",
     },
   });
   return (
-    <details className="jx-detail">
-      <summary>Edit karya & kontribusi</summary>
+    <Modal title="Edit artifact" onClose={onClose} dirty={form.formState.isDirty} busy={form.formState.isSubmitting}>
       <form
         onSubmit={form.handleSubmit(async (values) => {
           setError("");
@@ -66,7 +79,12 @@ export function ArtifactEditor({
                 visibility: values.visibility,
               },
             });
-            if (values.role_title.trim()) {
+            const contributionChanged = values.role_title !== (existing?.role_title || '') || values.contribution_description !== (existing?.contribution_description || '');
+            if (contributionChanged && existing && !values.role_title.trim()) {
+              setError('Metadata tersimpan. Kontribusi yang sudah ada tidak dapat dikosongkan melalui form ini.');
+              return;
+            }
+            if (contributionChanged && values.role_title.trim()) {
               try {
                 await apiRequest(
                   `/my/artifacts/${item.id}/contribution`,
@@ -84,18 +102,18 @@ export function ArtifactEditor({
                 setError(
                   `Metadata tersimpan, kontribusi belum tersimpan: ${err instanceof Error ? err.message : "Coba lagi."}`,
                 );
-                reload();
                 return;
               }
             }
             setNotice("Perubahan tersimpan.");
             reload();
+            onClose();
           } catch (err) {
             setError(err instanceof Error ? err.message : "Perubahan gagal.");
           }
         })}
       >
-        <div className="jx-form-grid" style={{ marginTop: 16 }}>
+        <fieldset disabled={form.formState.isSubmitting} className="jx-form-grid" style={{ marginTop: 16 }}>
           <label className="jx-field full">
             Judul
             <input className="jx-input" {...form.register("title")} />
@@ -119,6 +137,7 @@ export function ArtifactEditor({
             <input
               className="jx-input"
               placeholder="Opsional, contoh: Backend Developer"
+              readOnly={!!existing && existing.claim_status !== 'self_declared'}
               {...form.register("role_title")}
             />
           </label>
@@ -127,6 +146,7 @@ export function ArtifactEditor({
             <textarea
               className="jx-input"
               placeholder="Isi untuk menyimpan atau mengganti klaim self-declared Anda."
+              readOnly={!!existing && existing.claim_status !== 'self_declared'}
               {...form.register("contribution_description")}
             />
             <small>
@@ -134,7 +154,7 @@ export function ArtifactEditor({
               dikonfirmasi dilindungi.
             </small>
           </label>
-        </div>
+        </fieldset>
         {Object.values(form.formState.errors).map((error, index) => (
           <p role="alert" key={index}>
             {error.message}
@@ -159,6 +179,6 @@ export function ArtifactEditor({
           </div>
         )}
       </form>
-    </details>
+    </Modal>
   );
 }

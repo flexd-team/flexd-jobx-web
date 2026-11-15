@@ -6,5 +6,5 @@ export const visibilityLabels: Record<string, string> = {
 }
 export const artifactTypeLabels: Record<string, string> = {
   github_repository: 'Repository GitHub', document: 'Dokumen', spreadsheet: 'Spreadsheet',
-  image: 'Gambar', video: 'Video', design_link: 'Tautan desain', other: 'Lainnya',
+  image: 'Gambar', video: 'Video', other: 'Lainnya',
 }

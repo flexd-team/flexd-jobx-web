@@ -57,13 +57,15 @@ class JobNodes:
         if state["errors"]:
             return {}
         source = state["input"]
+        allowed = f"{source.business_problem}\n{source.employer_facts or ''}"
         errors = [
-            "Requirement has no exact supporting quote in employer input."
+            f"Requirement '{item.skill_name[:80]}' cites a quote that is not a verbatim "
+            "substring of employer input. Copy exact source text, or omit the requirement "
+            "and report the gap in missing_information."
             for item in state["draft"].requirements
-            if item.supporting_quote not in source.business_problem
-            and item.supporting_quote not in source.employer_facts
+            if not item.supporting_quote or item.supporting_quote not in allowed
         ]
-        return {"errors": list(dict.fromkeys(errors))}
+        return {"errors": list(dict.fromkeys(errors))[:10]}
 
     def repair_draft(self, state: JobState):
         return {"repairs": state["repairs"] + 1}

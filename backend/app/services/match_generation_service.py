@@ -3,12 +3,13 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.agents.matching.graph import build_matching_graph
 from app.agents.matching.schemas import MatchInput
 from app.models import (
     Artifact,
+    ArtifactAnalysis,
     ArtifactSkillEvidence,
     CandidateProfile,
     JobMatch,
@@ -32,6 +33,8 @@ async def generate_candidate_match(db, job_id: int, candidate: User) -> JobMatch
     )
     if job is None:
         raise AppError(404, "Job post not found", {"job_post": "Published job post does not exist"})
+    if (job.ai_generation_metadata or {}).get("demo"):
+        raise AppError(409, "Demo job", {"job_post": "Synthetic jobs cannot generate real matches"})
 
     now = datetime.now(UTC).replace(tzinfo=None)
     if job.closes_at is not None and job.closes_at <= now:
@@ -90,9 +93,15 @@ async def generate_candidate_match(db, job_id: int, candidate: User) -> JobMatch
         await db.scalars(
             select(ArtifactSkillEvidence)
             .join(Artifact, Artifact.id == ArtifactSkillEvidence.artifact_id)
+            .outerjoin(ArtifactAnalysis, ArtifactAnalysis.id == ArtifactSkillEvidence.analysis_id)
             .where(
                 Artifact.owner_user_id == candidate.id,
                 ArtifactSkillEvidence.review_status != "rejected",
+                or_(
+                    ArtifactAnalysis.id.is_(None),
+                    ArtifactAnalysis.model_provider.is_(None),
+                    ArtifactAnalysis.model_provider != "demo",
+                ),
             )
             .order_by(ArtifactSkillEvidence.id)
         )

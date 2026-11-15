@@ -3,12 +3,12 @@ import { env } from '@/lib/env'
 import { ApiError } from '@/lib/api-error'
 import { responseSchema } from '@/schemas/response'
 
-type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown; token?: string }
+type RequestOptions = Omit<RequestInit, 'body'> & { body?: unknown; rawBody?: Blob; token?: string }
 
 export async function apiRequest<T extends z.ZodType>(
   path: string,
   schema: T,
-  { body, token, headers, ...options }: RequestOptions = {},
+  { body, rawBody, token, headers, ...options }: RequestOptions = {},
 ): Promise<z.infer<T>> {
   const requestHeaders = new Headers(headers)
   requestHeaders.set('Accept', 'application/json')
@@ -22,7 +22,7 @@ export async function apiRequest<T extends z.ZodType>(
     response = await fetch(targetUrl, {
       ...options,
       headers: requestHeaders,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: rawBody ?? (body === undefined ? undefined : JSON.stringify(body)),
       signal: options.signal ?? AbortSignal.timeout(30_000),
     })
   } catch {

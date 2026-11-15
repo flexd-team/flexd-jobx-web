@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import Home from "@/pages/home";
+import ArtifactDetailPage from '@/pages/artifact-detail';
 import ProfilePage from "@/pages/profile";
 import AccountPage from "@/pages/account";
 import GitHubPage from "@/pages/github";
@@ -54,6 +55,7 @@ export default function App() {
   return (
     <AppShell>
       <Routes>
+        <Route path="/candidate/artifacts/:artifactId" element={<Protected role="candidate"><ArtifactDetailPage/></Protected>}/>
         <Route path="/" element={<Home />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/workspace" element={<LegacyRedirect />} />

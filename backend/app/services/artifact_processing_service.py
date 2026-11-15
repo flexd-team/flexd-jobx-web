@@ -21,17 +21,32 @@ from app.models import (
     SkillAlias,
     User,
 )
+from app.services.artifact_ingestion.contracts import ArtifactSourceError
 from app.services.artifact_ingestion.dispatcher import ArtifactIngestor
 from app.services.artifact_ingestion.github_reader import GitHubArtifactReader
+from app.services.artifact_ingestion.local_reader import LocalArtifactReader, load_local_media
 from app.utils.exceptions import AppError
 
 logger = logging.getLogger(__name__)
 
 
-def create_artifact_ingestor() -> ArtifactIngestor:
+def create_artifact_ingestor(artifact=None) -> ArtifactIngestor:
+    if artifact is not None and artifact.storage_key and artifact.storage_key.startswith("local/"):
+        return ArtifactIngestor(
+            {
+                artifact.artifact_type: LocalArtifactReader(
+                    (artifact.metadata_json or {}).get("managed_file", {})
+                )
+            }
+        )
+    settings = get_settings()
     return ArtifactIngestor(
         {
-            "github_repository": GitHubArtifactReader(),
+            "github_repository": GitHubArtifactReader(
+                token=settings.app_github_token.get_secret_value(),
+                client_id=settings.app_github_client_id,
+                client_secret=settings.app_github_client_secret.get_secret_value(),
+            ),
         }
     )
 
@@ -101,17 +116,27 @@ async def run_artifact_analysis(analysis_id: int):
             await db.commit()
             return
 
-        skills = list(await db.scalars(select(Skill).order_by(Skill.id).limit(200)))
-        aliases = list(await db.scalars(select(SkillAlias).order_by(SkillAlias.id).limit(1000)))
+        skills = list(await db.scalars(select(Skill).order_by(Skill.id).limit(5001)))
+        aliases = list(await db.scalars(select(SkillAlias).order_by(SkillAlias.id).limit(20001)))
+        if len(skills) > 5000 or len(aliases) > 20000:
+            analysis.analysis_status = "needs_human_review"
+            analysis.error_message = "Skill catalog exceeds analysis budget."
+            artifact.processing_status = "needs_review"
+            await db.commit()
+            return
+        aliases_by_skill = {}
+        for alias in aliases:
+            aliases_by_skill.setdefault(alias.skill_id, []).append(alias.alias_name)
         catalog = tuple(
             SkillDefinition(
                 id=str(s.id),
                 canonical_name=s.canonical_name,
-                aliases=[a.alias_name for a in aliases if a.skill_id == s.id],
+                aliases=aliases_by_skill.get(s.id, []),
             )
             for s in skills
         )
 
+        ingestor = create_artifact_ingestor(artifact)
         analysis.analysis_status = "processing"
         artifact.processing_status = "processing"
         await db.commit()
@@ -125,14 +150,15 @@ async def run_artifact_analysis(analysis_id: int):
             .limit(1)
         )
         candidate_role = (
-            contribution.role_title
-            if contribution and contribution.role_title
-            else "Software Engineer"
+            contribution.role_title if contribution and contribution.role_title else "Not declared"
         )
         contribution_desc = (
             contribution.contribution_description
             if contribution and contribution.contribution_description
-            else (artifact.description or "Developed and configured project components.")
+            else (
+                artifact.description
+                or "No individual contribution declared; do not infer authorship."
+            )
         )
 
         input_data = ArtifactInput(
@@ -146,26 +172,37 @@ async def run_artifact_analysis(analysis_id: int):
     result = None
     error_msg = None
     try:
-        model = LangChainStructuredModel()
+        model = LangChainStructuredModel(
+            media_loader=load_local_media,
+            max_media_bytes=settings.storage_max_upload_bytes,
+            demo_fallback=settings.app_demo,
+        )
         context = ArtifactContext(
             generation=ModelContext(model=model, skills=catalog),
-            ingestor=create_artifact_ingestor(),
+            ingestor=ingestor,
         )
         graph = build_artifact_analysis_graph(context)
         out = await graph.ainvoke({"input": input_data})
         result = out.get("result")
-    except Exception as exc:
-        logger.exception("Artifact analysis failed")
+    except ArtifactSourceError as exc:
+        logger.warning("Artifact source read failed for analysis %s: %s", analysis_id, exc)
         error_msg = str(exc)
+    except Exception:
+        logger.exception("Artifact analysis failed for analysis %s", analysis_id)
+        error_msg = (
+            "Analysis failed. Check supported format, file budgets, and model configuration."
+        )
 
     async with factory() as db:
         analysis = await db.scalar(
             select(ArtifactAnalysis).where(ArtifactAnalysis.id == analysis_id).with_for_update()
         )
+        if analysis is None:
+            return
         artifact = await db.scalar(
             select(Artifact).where(Artifact.id == analysis.artifact_id).with_for_update()
         )
-        if analysis is None or artifact is None:
+        if analysis is None or artifact is None or analysis.analysis_status != "processing":
             return
 
         if result is None:
@@ -179,13 +216,23 @@ async def run_artifact_analysis(analysis_id: int):
             artifact.processing_status = (
                 "completed" if result.status == "completed" else "needs_review"
             )
-            analysis.model_provider = "openrouter"
-            analysis.model_name = settings.llm_model or "google/gemini-2.5-flash-lite"
+            analysis.model_provider = "openai-compatible"
+            analysis.model_name = settings.llm_model
             analysis.prompt_version = result.prompt_version
             analysis.extracted_summary = result.summary or f"Analysis of {artifact.title}"
             analysis.raw_result = result.model_dump(mode="json")
+            if model.demo_used:
+                from app.services.demo_data import DEMO_MARKER
+
+                analysis.raw_result = {**analysis.raw_result, **DEMO_MARKER}
+                analysis.model_provider = "demo"
+                analysis.model_name = "synthetic-fallback-v1"
+                analysis.analysis_status = "needs_human_review"
+                artifact.processing_status = "needs_review"
 
             for ev in result.evidence:
+                if model.demo_used:
+                    break
                 try:
                     db.add(
                         ArtifactSkillEvidence(

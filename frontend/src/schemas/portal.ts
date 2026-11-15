@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const contribution = z.object({ id: z.string(), role_title: z.string().nullable(), contribution_description: z.string(), claim_status: z.string() });
+
 export const pagination = z.object({
   total: z.number(),
   limit: z.number(),
@@ -7,6 +9,8 @@ export const pagination = z.object({
 });
 export const envelope = <T extends z.ZodType>(data: T) => z.object({ data });
 export const artifact = z.object({
+  storage_key: z.string().nullable().optional(),
+  mime_type: z.string().nullable().optional(),
   id: z.string(),
   title: z.string(),
   artifact_type: z.string(),
@@ -62,13 +66,15 @@ export const artifactList = envelope(
   z.object({ artifacts: z.array(artifact), pagination }),
 );
 export const evidenceList = envelope(
-  z.object({ artifact_skill_evidences: z.array(evidence) }),
+  z.object({ artifact_skill_evidences: z.array(evidence), pagination: pagination.optional() }),
 );
 export const jobList = envelope(
   z.object({ job_posts: z.array(job), pagination }),
 );
 export const matchList = envelope(z.object({ job_matches: z.array(match) }));
 export const emptyEnvelope = envelope(z.object({}));
+export const artifactDetail = envelope(z.object({ artifact, artifact_contribution: contribution.nullable(), artifact_analysis: z.object({ id: z.string(), analysis_status: z.string(), extracted_summary: z.string().nullable(), error_message: z.string().nullable() }).nullable() }));
+export const artifactEvidenceList = envelope(z.object({ artifact_skill_evidences: z.array(evidence.extend({ analysis_id: z.string().nullable() })), pagination }));
 export const artifactInput = z.object({
   title: z.string().trim().min(1, "Judul wajib diisi.").max(200),
   source_url: z
@@ -81,7 +87,6 @@ export const artifactInput = z.object({
     "spreadsheet",
     "image",
     "video",
-    "design_link",
     "other",
   ]),
   visibility: z.enum(["private", "unlisted", "matching_employers", "public"]),

@@ -13,6 +13,7 @@ import { z } from "zod";
 import { usePortalResource } from "@/hooks/use-portal-resource";
 import { useAppSelector } from "@/hooks/use-app-selector";
 import { apiRequest } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-error";
 import {
   EmptyState,
   PageHeading,
@@ -133,7 +134,13 @@ export function CreateJobPage() {
       setLimitations(result.data.job_draft.limitations);
       setStep(1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Draft gagal dibuat.");
+      setError(
+        err instanceof ApiError && err.status === 503
+          ? "Draft AI belum tersedia. Coba lagi, atau lanjutkan dengan Tulis manual."
+          : err instanceof Error
+            ? err.message
+            : "Draft gagal dibuat.",
+      );
     } finally {
       setGenerating(false);
     }

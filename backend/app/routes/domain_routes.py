@@ -95,7 +95,7 @@ class CompanyProfileInput(BaseModel):
 class CreateArtifactInput(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     artifact_type: Literal[
-        "github_repository", "document", "spreadsheet", "image", "video", "design_link", "other"
+        "github_repository", "document", "spreadsheet", "image", "video", "other"
     ] = "document"
     description: str | None = Field(default=None, max_length=10000)
     source_url: str | None = Field(default=None, max_length=1000)
@@ -309,6 +309,12 @@ async def delete_my_artifact(
 
     await db.delete(artifact)
     await db.commit()
+    if artifact.storage_key and artifact.storage_key.startswith("local/"):
+        import asyncio
+
+        from app.services.artifact_upload_service import managed_path
+
+        await asyncio.to_thread(managed_path(artifact.storage_key).unlink, missing_ok=True)
     return item_response("Artifact deleted", "artifact", {"id": str(artifact_id)})
 
 

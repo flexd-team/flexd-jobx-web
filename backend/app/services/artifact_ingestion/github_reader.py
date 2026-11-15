@@ -1,253 +1,261 @@
-"""GitHub public repository reader for artifact ingestion."""
+"""Bounded, commit-pinned public GitHub source reader. Never executes repository code."""
 
 import base64
+import json
 import re
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 
-from app.agents.shared.contracts import ArtifactContent, ArtifactReference, SourceBlock
+from app.agents.shared.contracts import ArtifactContent, SourceBlock
+from app.services.artifact_ingestion.contracts import ArtifactSourceError
 
 SECRET_REGEX = re.compile(
     r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|"
     r"\bAKIA[A-Z0-9]{16}\b|\bgh[pousr]_[A-Za-z0-9_]+\b|"
-    r"(?i:\b(?:password|api[_-]?key|secret|token)\s*[:=]\s*['\"][^'\"]+['\"])"
+    r'(?i:\b(?:password|api[_-]?key|secret|token)\s*[:=]\s*[\'"][^\'"]+[\'"])'
 )
-
-MANIFEST_FILES = [
-    "requirements.txt",
-    "pyproject.toml",
-    "Pipfile",
+MANIFESTS = {
     "package.json",
-    "Dockerfile",
-    "docker-compose.yml",
-    "docker-compose.yaml",
+    "pyproject.toml",
+    "requirements.txt",
     "go.mod",
-    "Cargo.toml",
-    "build.gradle",
-    "build.gradle.kts",
-    "app/build.gradle",
-    "app/build.gradle.kts",
+    "cargo.toml",
+    "dockerfile",
+    "docker-compose.yml",
     "pom.xml",
-    "Package.swift",
-]
+    "build.gradle",
+    "package.swift",
+}
+EXTENSIONS = {
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".java",
+    ".kt",
+    ".go",
+    ".rs",
+    ".sql",
+    ".swift",
+    ".cs",
+    ".rb",
+    ".php",
+    ".vue",
+    ".html",
+    ".css",
+    ".tf",
+    ".yaml",
+    ".yml",
+}
+EXCLUDED = {
+    "node_modules",
+    "vendor",
+    "dist",
+    "build",
+    "coverage",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "fixtures",
+    "generated",
+    "migrations",
+}
+MAX_RESPONSE_BYTES = 2_000_000
 
-ENTRY_FILES = [
-    "main.py",
-    "app.py",
-    "app/main.py",
-    "app/app.py",
-    "src/index.ts",
-    "src/index.js",
-    "src/main.ts",
-    "src/App.tsx",
-    "server.js",
-    "app/src/main/AndroidManifest.xml",
-    "MainActivity.kt",
-    "app/src/main/java/com/zexceed/aniflix/MainActivity.kt",
-]
+
+def classify(path):
+    lower = path.lower()
+    name = lower.rsplit("/", 1)[-1]
+    if name in MANIFESTS:
+        return "manifest"
+    if name.startswith("readme") or lower.endswith(".md"):
+        return "documentation"
+    if (
+        any(part in {"tests", "test", "__tests__"} for part in lower.split("/"))
+        or name.startswith("test_")
+        or ".test." in name
+    ):
+        return "test"
+    return "implementation"
+
+
+def select_paths(tree, maximum=20):
+    candidates = []
+    for entry in tree:
+        path = entry.get("path", "")
+        parts = path.lower().split("/")
+        name = parts[-1]
+        if entry.get("type") != "blob" or entry.get("size", 0) > 100000:
+            continue
+        if any(part.startswith(".") or part in EXCLUDED for part in parts):
+            continue
+        if (
+            name not in MANIFESTS
+            and not name.startswith("readme")
+            and not any(name.endswith(ext) for ext in EXTENSIONS)
+        ):
+            continue
+        kind = classify(path)
+        relevance = sum(
+            word in name
+            for word in (
+                "service",
+                "controller",
+                "schema",
+                "model",
+                "route",
+                "auth",
+                "test",
+                "main",
+                "app",
+            )
+        )
+        candidates.append((path, kind, relevance))
+    selected = []
+    # Reserve space for actual implementation and tests before contextual claims.
+    for kind, quota in [("implementation", 12), ("test", 4), ("manifest", 2), ("documentation", 2)]:
+        group = sorted(
+            (item for item in candidates if item[1] == kind), key=lambda item: (-item[2], item[0])
+        )
+        selected.extend(group[:quota])
+    return selected[:maximum]
 
 
 class GitHubArtifactReader:
-    def __init__(self, timeout: float = 12.0):
+    def __init__(
+        self, timeout=12.0, token=None, client_id=None, client_secret=None, transport=None
+    ):
         self.timeout = timeout
+        self.token = token or ""
+        self.client_id = client_id or ""
+        self.client_secret = client_secret or ""
+        self.transport = transport
 
-    def _parse_repo(self, url: str) -> tuple[str, str]:
+    def _parse_repo(self, url):
         parsed = urlparse(url)
-        if parsed.netloc not in {"github.com", "www.github.com"}:
-            raise ValueError("Only github.com repository URLs are supported")
-        parts = [p for p in parsed.path.strip("/").split("/") if p]
-        if len(parts) < 2:
-            raise ValueError("Invalid GitHub repository URL path")
-        owner, repo = parts[0], parts[1]
-        if repo.endswith(".git"):
-            repo = repo[:-4]
-        return owner, repo
+        if parsed.scheme != "https" or parsed.netloc not in {"github.com", "www.github.com"}:
+            raise ArtifactSourceError("Only public HTTPS github.com repository URLs are supported.")
+        parts = parsed.path.strip("/").split("/")
+        if len(parts) < 2 or not all(re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in parts[:2]):
+            raise ArtifactSourceError("Invalid GitHub repository path.")
+        return parts[0], parts[1].removesuffix(".git")
 
-    def _sanitize(self, text: str) -> str:
+    def _sanitize(self, text):
         return SECRET_REGEX.sub("[FILTERED_SECRET]", text)
 
-    async def read(self, reference: ArtifactReference) -> ArtifactContent:
-        if not reference.source_url:
-            raise ValueError("Artifact source_url is required for GitHub repository")
-        owner, repo = self._parse_repo(reference.source_url)
+    def _auth_headers(self):
+        if self.token:
+            return {"Authorization": f"Bearer {self.token}"}
+        if self.client_id and self.client_secret:
+            credentials = base64.b64encode(
+                f"{self.client_id}:{self.client_secret}".encode()
+            ).decode("ascii")
+            return {"Authorization": f"Basic {credentials}"}
+        return {}
 
+    def _raise_for_status(self, status, headers):
+        if status in {403, 429}:
+            if headers.get("x-ratelimit-remaining") == "0":
+                raise ArtifactSourceError(
+                    "GitHub API rate limit exceeded. Configure APP_GITHUB_TOKEN or retry "
+                    "after the limit resets."
+                )
+            raise ArtifactSourceError(
+                "GitHub denied the request. Use a public repository or a token with access."
+            )
+        if status == 404:
+            raise ArtifactSourceError(
+                "GitHub repository not found. Private repositories are not supported."
+            )
+        raise ArtifactSourceError(f"GitHub request failed with status {status}.")
+
+    async def _get(self, client, url):
+        try:
+            async with client.stream("GET", url) as response:
+                if response.status_code >= 400:
+                    self._raise_for_status(response.status_code, response.headers)
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > MAX_RESPONSE_BYTES:
+                        raise ArtifactSourceError("GitHub response exceeds the reader budget.")
+                return bytes(body)
+        except httpx.HTTPError as exc:
+            raise ArtifactSourceError(
+                "Unable to reach GitHub. Check network access and retry."
+            ) from exc
+
+    async def _get_json(self, client, url):
+        try:
+            return json.loads(await self._get(client, url))
+        except json.JSONDecodeError as exc:
+            raise ArtifactSourceError("GitHub returned an unreadable response.") from exc
+
+    async def read(self, reference):
+        owner, repo = self._parse_repo(reference.source_url or "")
+        root = f"https://api.github.com/repos/{owner}/{repo}"
         headers = {
             "Accept": "application/vnd.github+json",
-            "User-Agent": "JobX-Artifact-Reader/1.0",
+            "User-Agent": "JobX-Artifact-Reader/2.0",
+            **self._auth_headers(),
         }
-
-        auth = None
-        try:
-            from app.configs.settings import get_settings
-
-            settings = get_settings()
-            if (
-                settings.app_github_client_id
-                and settings.app_github_client_secret.get_secret_value()
-            ):
-                auth = (
-                    settings.app_github_client_id,
-                    settings.app_github_client_secret.get_secret_value(),
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            follow_redirects=False,
+            headers=headers,
+            transport=self.transport,
+        ) as client:
+            metadata = await self._get_json(client, root)
+            branch = metadata.get("default_branch") or "HEAD"
+            commit = await self._get_json(client, root + "/commits/" + quote(branch, safe=""))
+            sha = commit.get("sha", "")
+            if not re.fullmatch(r"[a-f0-9]{40}", sha):
+                raise ArtifactSourceError("GitHub returned an invalid commit identifier.")
+            tree = await self._get_json(client, root + "/git/trees/" + sha + "?recursive=1")
+            selected = select_paths(tree.get("tree", []))
+            blocks, warnings = [], []
+            used = 0
+            if tree.get("truncated"):
+                warnings.append("GitHub tree truncated; repository coverage is partial.")
+            for path, kind, _ in selected:
+                # raw.githubusercontent.com does not consume the REST API quota.
+                raw_url = (
+                    f"https://raw.githubusercontent.com/{owner}/{repo}/{sha}/"
+                    f"{quote(path, safe='/')}"
                 )
-        except Exception:
-            pass
-
-        async with httpx.AsyncClient(headers=headers, auth=auth, timeout=self.timeout) as client:
-            repo_res = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
-            if repo_res.status_code != 200:
-                err_md = (
-                    f"# Repository {owner}/{repo}\nTidak dapat mengambil metadata dari GitHub API."
-                )
-                return ArtifactContent(
-                    source_revision="unknown",
-                    content_markdown=err_md,
-                    source_locations=[
-                        SourceBlock(
-                            block_id="repo_info",
-                            location="github.com",
-                            text=f"Repository {owner}/{repo} (status {repo_res.status_code})",
-                        )
-                    ],
-                    limitations=[f"GitHub API returned HTTP {repo_res.status_code}"],
-                )
-
-            repo_data = repo_res.json()
-            default_branch = repo_data.get("default_branch", "main")
-            description = repo_data.get("description") or "No description provided."
-            language = repo_data.get("language") or "Unspecified"
-
-            source_blocks: list[SourceBlock] = []
-            markdown_parts = [
-                f"# Repository: {owner}/{repo}",
-                f"**Language**: {language}",
-                f"**Branch**: {default_branch}",
-                f"**Description**: {description}\n",
-            ]
-
-            # 1. Fetch README
-            readme_res = await client.get(f"https://api.github.com/repos/{owner}/{repo}/readme")
-            if readme_res.status_code == 200:
-                readme_data = readme_res.json()
                 try:
-                    content_bytes = base64.b64decode(readme_data.get("content", ""))
-                    readme_text = content_bytes.decode("utf-8", errors="replace")
-                    readme_text = self._sanitize(readme_text[:12000])
-                    source_blocks.append(
+                    body = await self._get(client, raw_url)
+                except ArtifactSourceError:
+                    warnings.append(f"Selected source unavailable: {path}")
+                    continue
+                text = self._sanitize(body.decode("utf-8", errors="replace"))
+                lines = text.splitlines(keepends=True)
+                for offset in range(0, len(lines), 100):
+                    segment = "".join(lines[offset : offset + 100])
+                    if not segment.strip():
+                        continue
+                    if used + len(segment) > 100000 or len(blocks) >= 100:
+                        warnings.append("Repository text budget reached; coverage is partial.")
+                        break
+                    end_line = offset + len(lines[offset : offset + 100])
+                    blocks.append(
                         SourceBlock(
-                            block_id="readme",
-                            location=f"{readme_data.get('path', 'README.md')}:1",
-                            text=readme_text,
+                            block_id=f"source-{len(blocks) + 1}",
+                            location=f"{path}:{offset + 1}-{end_line}@{sha[:12]}",
+                            text=segment,
+                            source_kind=kind,
                         )
                     )
-                    readme_path = readme_data.get("path", "README.md")
-                    markdown_parts.append(f"## README ({readme_path})\n{readme_text[:3000]}\n")
-                except Exception:
-                    pass
-
-            # 2. Check manifest files in root and immediate subfolders
-            manifest_found = 0
-            for manifest_name in MANIFEST_FILES:
-                if manifest_found >= 4:
-                    break
-                m_res = await client.get(
-                    f"https://api.github.com/repos/{owner}/{repo}/contents/{manifest_name}?ref={default_branch}"
+                    used += len(segment)
+            if not blocks:
+                raise ArtifactSourceError(
+                    "No readable source files found. Metadata alone is not skill evidence."
                 )
-                if m_res.status_code == 200:
-                    m_data = m_res.json()
-                    if isinstance(m_data, dict) and "content" in m_data:
-                        try:
-                            m_text = base64.b64decode(m_data["content"]).decode(
-                                "utf-8", errors="replace"
-                            )
-                            m_text = self._sanitize(m_text[:6000])
-                            clean_tag = manifest_name.replace(".", "_").replace("-", "_")
-                            source_blocks.append(
-                                SourceBlock(
-                                    block_id=f"manifest_{clean_tag}",
-                                    location=f"{manifest_name}:1",
-                                    text=m_text,
-                                )
-                            )
-                            markdown_parts.append(
-                                f"## Manifest: {manifest_name}\n```\n{m_text[:1500]}\n```\n"
-                            )
-                            manifest_found += 1
-                        except Exception:
-                            pass
-
-            # 3. Check git tree to understand full repository structure
-            tree_res = await client.get(
-                f"https://api.github.com/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
-            )
-            if tree_res.status_code == 200:
-                tree_data = tree_res.json()
-                paths = [
-                    item["path"]
-                    for item in tree_data.get("tree", [])
-                    if item.get("type") in {"blob", "tree"}
-                    and not item["path"].startswith((".", "node_modules", "vendor"))
-                ][:60]
-                if paths:
-                    tree_text = "\n".join(paths)
-                    source_blocks.append(
-                        SourceBlock(
-                            block_id="project_structure",
-                            location="repository_tree:1",
-                            text=tree_text,
-                        )
-                    )
-                    markdown_parts.append(
-                        f"## Project File Structure\n```\n{tree_text[:2000]}\n```\n"
-                    )
-
-            # 4. Check entry source files in root or service modules
-            entry_found = 0
-            for entry_name in ENTRY_FILES:
-                if entry_found >= 2:
-                    break
-                e_res = await client.get(
-                    f"https://api.github.com/repos/{owner}/{repo}/contents/{entry_name}?ref={default_branch}"
-                )
-                if e_res.status_code == 200:
-                    e_data = e_res.json()
-                    if isinstance(e_data, dict) and "content" in e_data:
-                        try:
-                            e_text = base64.b64decode(e_data["content"]).decode(
-                                "utf-8", errors="replace"
-                            )
-                            e_text = self._sanitize(e_text[:8000])
-                            block_id = f"entry_{entry_name.replace('/', '_').replace('.', '_')}"
-                            source_blocks.append(
-                                SourceBlock(
-                                    block_id=block_id,
-                                    location=f"{entry_name}:1",
-                                    text=e_text,
-                                )
-                            )
-                            markdown_parts.append(
-                                f"## Source: {entry_name}\n```\n{e_text[:2000]}\n```\n"
-                            )
-                            entry_found += 1
-                        except Exception:
-                            pass
-
-            # If no blocks were extracted, provide a repo metadata block
-            if not source_blocks:
-                repo_desc = f"Repo {owner}/{repo}. Lang: {language}. Desc: {description}"
-                source_blocks.append(
-                    SourceBlock(
-                        block_id="repo_summary",
-                        location=f"{default_branch}/repository",
-                        text=repo_desc,
-                    )
-                )
-
             return ArtifactContent(
-                source_revision=f"branch-{default_branch}",
-                content_markdown="\n".join(markdown_parts),
-                source_locations=source_blocks,
-                limitations=[]
-                if source_blocks
-                else ["Hanya metadata repository yang dapat diakses"],
+                source_revision=sha,
+                source_locations=blocks,
+                limitations=["Selected source subset only; repository not exhaustively analyzed."],
+                processing_warnings=list(dict.fromkeys(warnings)),
             )

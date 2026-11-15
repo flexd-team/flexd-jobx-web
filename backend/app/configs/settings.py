@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     app_name: str = "flexd-jobx-web"
     app_env: Literal["local", "test", "production"] = "local"
+    app_demo: bool = False
     app_api_prefix: str = "/api/v1"
     app_cors_origins: list[str] = Field(
         default_factory=lambda: [
@@ -36,6 +37,7 @@ class Settings(BaseSettings):
     app_register_window_seconds: int = Field(default=60, ge=1)
     app_github_client_id: str = ""
     app_github_client_secret: SecretStr = SecretStr("")
+    app_github_token: SecretStr = SecretStr("")
     app_github_callback_url: str = "http://localhost:8000/api/v1/auth/github/callback"
     app_github_frontend_callback_url: str = "http://localhost:5173/auth/github/callback"
 
@@ -62,6 +64,8 @@ class Settings(BaseSettings):
     storage_path: str = "/jobx"
     storage_public_url: str = "https://flexd.s3.ap-southeast-1.amazonaws.com/jobx"
     storage_acl: bool = False
+    storage_local_root: Path = Path(__file__).resolve().parents[2] / ".artifact-storage"
+    storage_max_upload_bytes: int = Field(default=20_000_000, ge=1, le=100_000_000)
 
     llm_api_key: SecretStr = SecretStr("")
     llm_base_url: str = ""
@@ -86,6 +90,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production(self):
+        if self.app_env == "production" and self.app_demo:
+            raise ValueError("APP_DEMO must be false in production")
         if self.app_env == "production" and "*" in self.app_cors_origins:
             raise ValueError("Production CORS origins must be explicit")
         return self

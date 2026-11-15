@@ -9,11 +9,11 @@ import { usePortalResource } from "@/hooks/use-portal-resource";
 import { envelope } from "@/schemas/portal";
 
 const profileInput = z.object({
-  headline: z.string().max(150),
+  headline: z.string().max(180),
   biography: z.string().max(5000),
   city: z.string().max(120),
   country: z.string().min(1).max(100),
-  years_experience: z.number().int().min(0).max(100),
+  years_experience: z.number().min(0).max(999.9).multipleOf(0.1),
   preferred_employment_type: z.enum([
     "full_time",
     "part_time",
@@ -25,8 +25,7 @@ const profileInput = z.object({
   preferred_work_mode: z.enum(["onsite", "hybrid", "remote", "any"]),
   profile_visibility: z.enum([
     "public",
-    "registered_only",
-    "matching_employers",
+    "matching_only",
     "private",
   ]),
   name: z.string().max(200),
@@ -38,7 +37,8 @@ const candidateProfile = z.object({
   biography: z.string().nullable(),
   city: z.string().nullable(),
   country: z.string(),
-  years_experience: z.number().nullable(),
+  years_experience: z.string().regex(/^\d+(?:\.\d)?$/).nullable()
+    .transform((value) => value === null ? 0 : Number(value)),
   preferred_employment_type: z.string(),
   preferred_work_mode: z.string(),
   profile_visibility: z.string(),
@@ -76,7 +76,7 @@ export default function ProfilePage() {
       years_experience: 0,
       preferred_employment_type: "full_time",
       preferred_work_mode: "remote",
-      profile_visibility: "matching_employers",
+      profile_visibility: "matching_only",
       name: "",
       industry: "",
       description: "",
@@ -129,7 +129,7 @@ export default function ProfilePage() {
                 biography: values.biography,
                 city: values.city,
                 country: values.country,
-                years_experience: values.years_experience,
+                 years_experience: values.years_experience.toFixed(1),
                 preferred_employment_type: values.preferred_employment_type,
                 preferred_work_mode: values.preferred_work_mode,
                 profile_visibility: values.profile_visibility,
@@ -192,7 +192,8 @@ export default function ProfilePage() {
                 <input
                   type="number"
                   min="0"
-                  max="100"
+                  max="999.9"
+                  step="0.1"
                   className="jx-input"
                   {...form.register("years_experience", {
                     valueAsNumber: true,

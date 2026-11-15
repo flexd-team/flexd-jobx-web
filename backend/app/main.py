@@ -11,8 +11,10 @@ from app.middlewares.request_context import RequestContextMiddleware
 from app.routes import (
     artifact_analysis_route,
     artifact_contribution_route,
+    artifact_detail_route,
     artifact_route,
     artifact_skill_evidence_route,
+    artifact_upload_route,
     auth_route,
     candidate_profile_route,
     company_profile_route,
@@ -64,6 +66,8 @@ def create_app() -> FastAPI:
         job_skill_requirement_route.router,
         job_match_route.router,
         domain_routes.router,
+        artifact_detail_route.router,
+        artifact_upload_route.router,
     ):
         app.include_router(router, prefix=settings.app_api_prefix)
     return app

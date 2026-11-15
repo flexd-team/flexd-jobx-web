@@ -150,7 +150,7 @@ describe("Prototype production integration", () => {
       screen.getByRole("button", { name: "Generate draft" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Server tidak tersedia.",
+      "Draft AI belum tersedia. Coba lagi, atau lanjutkan dengan Tulis manual.",
     );
     expect(
       screen.queryByText("Backend Engineer - Sistem Inventaris"),

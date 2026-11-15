@@ -140,7 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? employerNav
         : candidateNav;
   const current =
-    nav.find((item) => item.to === pathname)?.label ??
+    nav.find((item) => item.to === pathname || pathname.startsWith(`${item.to}/`))?.label ??
     (pathname.endsWith("settings") ? "Settings" : "GitHub");
   const name = user?.name || user?.email || "Akun JobX";
 

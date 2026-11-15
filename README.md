@@ -330,6 +330,140 @@ Dependency note: frontend overrides the ESLint parser's transitive `minimatch` t
 after typescript-eslint adopts a patched range. Lint, tests, and build are checked with it.
 # Prototype design integration
 
+## Job draft generation
+
+`POST /api/v1/jobs/generate-description` builds a draft only from employer input. Prompt v2
+requires `supporting_quote` to be a verbatim substring of `business_problem` or
+`employer_facts` and writes prose in the input language. Quotes are never translated or
+paraphrased; unsupported skills belong in `missing_information`. Grounding failure triggers
+one repair attempt with skill-specific feedback, then returns `needs_review` with no draft.
+The service logs only an exception class name (never messages, provider detail, or content).
+Failure surfaces as 503 with a safe, actionable message; the UI adds a retry/manual hint.
+No synthetic draft is returned unless `APP_DEMO=true`.
+
+## Demo seed and AI fallback
+
+From `backend/`, demo seed targets existing **active candidate ID 3** and **active employer
+ID 4**. Missing accounts or mismatched roles stop execution; passwords, OAuth identities,
+account roles, and existing profiles are never changed. No startup seed or schema creation.
+
+```sh
+uv run python -m scripts.seed_demo --help
+uv run python -m scripts.seed_demo
+uv run python -m scripts.seed_demo --apply --confirm SEED_DEMO_3_4
+```
+
+For existing v1 seeds with old generic/`[DEMO]` copy, use
+`uv run python -m scripts.refresh_seed_content` to preview, then add `--apply` to commit.
+Refresh requires exactly one marked seed artifact/job per scenario. It updates only those
+fixtures and old `[DEMO]` profile/company copy; preserves account identities, non-seed data,
+publication status, and decisions. Synthetic provenance remains. No fixture deletes.
+
+The second command is a transactional dry-run: it performs inserts then rolls back, so it
+still needs DB write privileges and may consume auto-increment IDs. Only the third commits.
+Verify your configured DB target before running either. Production is blocked. Seeds are
+additive/idempotent, with all changes rolled back on failure; conflicting seed identities
+stop rather than overwrite user data. Do not run seeds concurrently.
+
+Includes candidate/company profiles, the shared skills/aliases catalog, four placeholder
+artifacts with contributions/analyses/evidence, four draft jobs with requirements, and four
+synthetic matches showing pending, one-sided, mutual, and rejected decisions. Seed uses
+realistic fictional portfolio/company/job copy without `[DEMO]` display prefixes, varied
+salary ranges, contribution shares, confidence values, and illustrative match scores.
+Internal `demo`/`synthetic` provenance remains; these are not verified histories or model results.
+Reserved
+`example.invalid` URLs are placeholders, not downloadable uploads or readable sources.
+Jobs remain drafts; seeding does not bypass publication approval. Scores/confidence are
+illustrative fixture values, not measured results. Evidence remains unverified. Seed analyses
+are excluded from real match
+scoring, and seed jobs cannot generate real matches. Synthetic provenance remains in
+analysis metadata and match score breakdown. OAuth identities and accounts are not seeded.
+
+Set backend `APP_DEMO=true` to enable **AI-only** fallback (default `false`). Restart backend
+after changing settings. No frontend env exposure required; `.env` is never rewritten by seed.
+Real AI is tried first and may incur cost. Artifact model failure returns a labeled synthetic
+summary, no fabricated skill evidence, `needs_human_review`, and `raw_result.demo=true`.
+Draft JD failure/absence returns labeled demo text, empty skill requirements, and `demo=true`.
+Labels read `Data demo — bukan hasil analisis nyata` in existing summary/limitations UI.
+Successful real outputs are unchanged. Matching is deterministic and has no dummy fallback.
+Auth/ownership, input/file integrity, file budgets, unsupported formats, DB errors and normal
+CRUD failures are never converted into demo success. `APP_DEMO=true` is rejected in production.
+
+## Skill extraction quality v2
+
+GitHub analysis resolves the default branch to one immutable commit, selects up to 20 source
+files dynamically (implementation/test slots reserved), and attaches line ranges plus revision
+to citations. Vendor/build/hidden paths are excluded. This replaces fixed project-specific
+entry paths. Source coverage remains partial and is disclosed; inaccessible repositories fail
+rather than generating skills from metadata alone. File contents are read from
+`raw.githubusercontent.com` so only three REST calls per analysis are spent. Requests
+authenticate with optional `APP_GITHUB_TOKEN`; when it is empty, the configured OAuth app client
+credentials are used for basic auth, both raising the limit to 5,000 requests/hour. Rate-limit
+and repository errors are recorded as actionable analysis messages.
+
+Text blocks are analyzed in batches around 24,000 characters, at most six batches per graph
+attempt. Overall existing 100-block/100,000-character reader budget still applies. Repairs can
+repeat batches; multi-part analysis may cost more than one inference request. All citations
+are validated against original supplied blocks. Manifest/documentation/metadata evidence is
+always inferred, never direct implementation evidence. Multiple independent citations are
+deduplicated and retained under `raw_result.supporting_evidence`; strongest implementation
+evidence is selected deterministically for the single persisted skill evidence record.
+
+Catalog loading covers up to 5,000 skills/20,000 aliases with explicit over-budget review;
+per-batch lexical relevance ranking selects up to 200 candidates from the entire loaded catalog,
+not just first IDs. Unresolved model suggestions remain in analysis output for human review;
+they do not create canonical skills automatically. Large-catalog semantic recall and real-model
+precision improvements have not been benchmarked. Tests verify deterministic selection,
+chunking, provenance checks, and ranking—not a measured production accuracy increase.
+
+## File analysis (updated)
+
+Managed uploads can now be queued with the existing Analyze action. PDF, PNG/JPEG/WebP,
+and MP4 bytes are sent as native multimodal content blocks to the configured OpenAI-compatible
+endpoint. DOCX paragraphs/tables, XLSX sheet/cell values, CSV rows, and TXT lines are extracted
+locally, then analyzed by the same model. DOCX embedded images, spreadsheet charts, and visual
+layout are not analyzed. Formulas/macros are never executed. Cached formula values may be stale.
+This supersedes older notes below stating that file analysis is unavailable or returns 422.
+
+Readers verify upload hashes, formats and byte limits; extracted text is limited to 100 blocks
+and 100,000 characters. Exceeding budgets fails safely rather than silently truncating.
+Native PDF citations require an existing page; video timestamps remain model-reported and are
+not independently verified. Audio comprehension is not guaranteed. Visual evidence is stored
+with `[Model observation; human review required]`, never presented as a verified text quotation.
+Generated evidence remains `ai_suggested`. Real model requests can incur cost and disclose file
+content to the configured endpoint. Upload alone does not trigger analysis.
+
+Tests use injected chat adapters and synthetic temporary files, not paid inference. Prior direct
+endpoint smoke tests established PNG/PDF/MP4 input support, not end-to-end artifact persistence.
+Background tasks remain process-local, not a crash-recoverable durable worker.
+
+Modal Tambah artifact menerima file PDF/DOCX/TXT (dokumen), XLSX/CSV (spreadsheet),
+PNG/JPEG/WebP (gambar), MP4 (video). `design_link` tidak tersedia pada input baru;
+enum DB dan record legacy dipertahankan. Import GitHub tetap lewat alur khusus.
+`POST /api/v1/my/artifacts/upload` menerima raw binary body; metadata query: title,
+artifact_type, visibility, filename, description. Server menentukan MIME dari format yang
+divalidasi, tidak mempercayai Content-Type client. Default batas 20 MB melalui
+`STORAGE_MAX_UPLOAD_BYTES`; UI membatasi 20 MB. File tersimpan lokal privat di
+`STORAGE_LOCAL_ROOT` (default backend/.artifact-storage), bukan S3 atau static public.
+Deploy dengan volume persisten privat, disk quota, dan backup operator. Jangan mount folder
+storage sebagai URL publik. PDF dibatasi 100 halaman dan tanpa enkripsi, gambar 25 MP,
+OOXML dibatasi jumlah/ukuran ZIP dan menolak macro, MP4 dicek struktur container dasar.
+Pemeriksaan tersebut bukan antivirus, pemeriksaan codec penuh, atau jaminan file aman.
+
+`GET /api/v1/my/artifacts/{id}/file` mengunduh attachment untuk kandidat pemilik,
+dengan no-store/nosniff. Tidak menyediakan URL publik atau preview HTML aktif.
+Penghapusan melalui self-service membersihkan file; admin cascade/penghapusan akun dan
+kegagalan filesystem membutuhkan rekonsiliasi orphan oleh operator.
+Upload tidak memanggil model. Reader dokumen/media belum dikonfigurasi, sehingga antrean
+analisis managed file ditolak 422, bukan mengklaim konten telah dianalisis.
+
+Artifact detail tersedia di `/candidate/artifacts/:artifactId`. Tambah/edit memakai modal
+native dialog (Escape, focus containment/restoration, dan konfirmasi perubahan belum disimpan).
+`GET /api/v1/my/artifacts/{id}` mengembalikan `data.artifact`, kontribusi pemilik, dan analisis
+terbaru. `GET /api/v1/my/artifacts/{id}/skill-evidences?limit=20&offset=0` memfilter evidence
+di server, maksimal 100 per halaman; mencakup evidence dari analisis sebelumnya juga.
+Kedua endpoint khusus kandidat pemilik; record kandidat lain 404, role lain 403.
+
 UI mengikuti prototype pengguna `JobX-project.zip`; sistem desain aktual di `DESIGN.md`.
 Workspace kandidat berada di `/candidate/*`, employer `/employer/*`, admin `/admin/*`.
 Route lama `/workspace`, `/jobs`, `/profile` tetap redirect sesuai role. GitHub callback tetap
