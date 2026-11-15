@@ -61,7 +61,11 @@ async def test_domain_candidate_and_employer_workflows(api):
 
 
 @pytest.mark.asyncio
-async def test_employer_job_creation_and_matching(api):
+async def test_employer_job_creation_and_matching(api, monkeypatch):
+    async def draft_model(*args):
+        return {"draft": {"suggested_title": "API engineer"}, "limitations": []}
+
+    monkeypatch.setattr("app.routes.domain_routes.generate_job_description", draft_model)
     # Admin creates a canonical skill first
     api.headers["Authorization"] = f"Bearer {create_access_token(1)}"
     skill_res = await api.post(
@@ -113,7 +117,8 @@ async def test_employer_job_creation_and_matching(api):
     assert draft_res.status_code == 200
     assert "draft" in draft_res.json()["data"]["job_draft"]
 
-    # 3. Create published job post
+    # 3. Create draft. Published fixture below simulates existing approved inventory;
+    # this does not assert an approval workflow exists.
     job_res = await api.post(
         "/api/v1/my/job-posts",
         json={
@@ -122,7 +127,7 @@ async def test_employer_job_creation_and_matching(api):
             "job_summary": "Mengembangkan API dan integrasi MySQL.",
             "employment_type": "full_time",
             "work_mode": "remote",
-            "status": "published",
+            "status": "draft",
             "requirements": [
                 {"skill_id": skill_id, "requirement_type": "must_have", "weight": "1.0"}
             ],
@@ -130,6 +135,15 @@ async def test_employer_job_creation_and_matching(api):
     )
     assert job_res.status_code == 201
     job_id = job_res.json()["data"]["job_post"]["id"]
+    from app.configs.database import get_db
+    from app.main import application
+    from app.models import JobPost
+
+    async for db in application.dependency_overrides[get_db]():
+        record = await db.get(JobPost, int(job_id))
+        record.status = "published"
+        await db.commit()
+        break
 
     # 4. Candidate calculates match to this job
     api.headers["Authorization"] = f"Bearer {create_access_token(2)}"

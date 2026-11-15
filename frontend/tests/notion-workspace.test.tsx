@@ -64,19 +64,19 @@ describe('Notion UI Primitives', () => {
 })
 
 describe('Notion Navigation & Pages', () => {
-  it('renders AppShell with Notion document breadcrumb and quick navigation', () => {
+  it('renders public navigation without simulated role sessions', () => {
     renderWithProviders(<AppShell><div>Test Content</div></AppShell>)
-    expect(screen.getAllByText('JobX').length).toBeGreaterThan(0)
-    expect(screen.getByText('workspace')).toBeInTheDocument()
-    expect(screen.getAllByText('Workspace Kandidat').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Job Studio').length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: 'JobX beranda' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Navigasi publik' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Mulai sekarang/ })).toHaveAttribute('href', '/account?mode=register')
+    expect(screen.queryByTitle('Simulasi login sebagai Kandidat')).not.toBeInTheDocument()
   })
 
   it('renders Home page with Notion hero and purple CTA', () => {
     renderWithProviders(<Home />)
-    expect(screen.getByText(/Skill punya bukti/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Mulai Gratis Sebagai Kandidat/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Buka Job Studio \(Employer\)/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: /Tunjukkan apa yang kamu buat/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Mulai sebagai kandidat/i })).toHaveAttribute('href', '/account?mode=register')
+    expect(screen.getByRole('link', { name: /Saya mencari talenta/i })).toHaveAttribute('href', '/account?mode=register&role=employer')
   })
 
   it('renders Workspace page with evidence inspector and match recommendations', () => {

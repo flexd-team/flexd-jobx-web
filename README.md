@@ -328,3 +328,29 @@ Tests inject fake readers/models; do not call GitHub, paid LLM endpoints, S3 or 
 Dependency note: frontend overrides the ESLint parser's transitive `minimatch` to patched
 11.x because its declared 9.x range is affected by GHSA-g3hv-75wg-m249. Remove the override
 after typescript-eslint adopts a patched range. Lint, tests, and build are checked with it.
+# Prototype design integration
+
+UI mengikuti prototype pengguna `JobX-project.zip`; sistem desain aktual di `DESIGN.md`.
+Workspace kandidat berada di `/candidate/*`, employer `/employer/*`, admin `/admin/*`.
+Route lama `/workspace`, `/jobs`, `/profile` tetap redirect sesuai role. GitHub callback tetap
+`/auth/github/callback`. Login dan OAuth tidak diganti simulasi; halaman baru menampilkan
+error API, bukan data demo. UI baru memakai shared API client dan schema Zod.
+
+`POST /api/v1/my/artifacts/{id}/contribution` menyimpan peran/deskripsi kontribusi pemilik
+kandidat sebagai `self_declared`; tidak menerima claim verification dari client. Klaim yang
+sudah dikonfirmasi dilindungi. Perubahan artifact dan kontribusi adalah request terpisah;
+UI melaporkan jika hanya metadata yang berhasil tersimpan.
+
+Wizard pekerjaan menyimpan **draft**. Self-service create/update menolak publikasi baru
+dengan 409 karena workflow approval belum dikonfigurasi pada skema saat ini. Tidak ada
+migrasi/provisioning DB yang dijalankan untuk perubahan UI ini. Draft generation gagal
+mengembalikan 503 aman, bukan JD heuristik yang menyamar sebagai hasil model.
+
+Penyesuaian bukan port pixel-perfect seluruh prototype: detail memakai disclosure, belum
+semua drawer/wizard onboarding prototype tersedia; upload generic, recovery email dan
+notifikasi tidak disimulasikan. Admin menyediakan list/status/delete akun dan create/delete
+skill/alias; pengelolaan akun lengkap tetap mengikuti kebutuhan backend yang tersedia.
+
+Test default fixture API mengosongkan key model lewat monkeypatch. Test JD workflow memakai
+model tiruan agar suite tidak memakai kredensial LLM lokal. Jangan jalankan worker atau
+pengujian integrasi model berbayar tanpa izin eksplisit.

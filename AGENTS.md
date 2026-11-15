@@ -150,8 +150,11 @@ GET   /api/v1/auth/me
 PATCH /api/v1/auth/password
 ```
 
-- Semua CRUD 12 tabel khusus admin aktif. Candidate/employer boleh mengakses auth/me dan
-  mengganti password sendiri, bukan CRUD domain umum.
+- CRUD generik 12 tabel khusus admin aktif. Workflow self-service terpisah boleh diakses
+  candidate/employer dengan pemeriksaan role, ownership, dan visibilitas pada server.
+  Candidate mengelola profil/artifact/kontribusi/review evidence dan keputusan sendiri;
+  employer mengelola perusahaan/pekerjaan/kebutuhan skill dan keputusan sendiri.
+  Private/unlisted tidak boleh bocor ke employer. Reviewer verification hanya admin.
 - Register publik hanya menerima candidate/employer, status active ditentukan backend.
   Tolak role admin dan account_status dari client. Tidak membuat profil atau token otomatis.
 - Login mengembalikan `data.user` dan `data.auth`; register/me memakai `data.user`.

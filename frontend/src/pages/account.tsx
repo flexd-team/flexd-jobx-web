@@ -42,11 +42,11 @@ export default function AccountPage() {
   const dispatch = useAppDispatch()
   const { token, accountType, user } = useAppSelector((s) => s.auth)
 
-  const [tab, setTab] = useState<'login' | 'register'>('login')
+  const [tab, setTab] = useState<'login' | 'register'>(searchParams.get('mode') === 'register' ? 'register' : 'login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
-  const [registerType, setRegisterType] = useState<'candidate' | 'employer'>('candidate')
+  const [registerType, setRegisterType] = useState<'candidate' | 'employer'>(searchParams.get('role') === 'employer' ? 'employer' : 'candidate')
   const [loading, setLoading] = useState(false)
   const [githubLoading, setGithubLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -108,7 +108,7 @@ export default function AccountPage() {
         )
         setSuccessMsg(`Selamat datang kembali, ${userData.name}!`)
         setTimeout(() => {
-          navigate(userData.account_type === 'employer' ? '/jobs' : '/workspace')
+          navigate(`/${userData.account_type === 'admin' ? 'admin' : userData.account_type === 'employer' ? 'employer' : 'candidate'}/overview`)
         }, 800)
       }
     } catch (err: unknown) {
@@ -142,39 +142,6 @@ export default function AccountPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  // Quick Switcher helpers
-  const handleQuickCandidate = () => {
-    dispatch(
-      setSession({
-        token: 'dev-token-candidate-2',
-        accountType: 'candidate',
-        user: {
-          id: '2',
-          name: 'Ihsan Nul Amri',
-          email: 'candidate@example.com',
-          account_type: 'candidate',
-        },
-      }),
-    )
-    navigate('/workspace')
-  }
-
-  const handleQuickEmployer = () => {
-    dispatch(
-      setSession({
-        token: 'dev-token-employer-3',
-        accountType: 'employer',
-        user: {
-          id: '3',
-          name: 'Tech Talent Recruiter',
-          email: 'employer@example.com',
-          account_type: 'employer',
-        },
-      }),
-    )
-    navigate('/jobs')
   }
 
   return (
@@ -219,7 +186,7 @@ export default function AccountPage() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => navigate(accountType === 'employer' ? '/jobs' : '/workspace')}
+              onClick={() => navigate(`/${accountType === 'admin' ? 'admin' : accountType === 'employer' ? 'employer' : 'candidate'}/overview`)}
               className="text-xs"
             >
               Buka {accountType === 'employer' ? 'Job Studio' : 'Workspace'}
@@ -417,30 +384,6 @@ export default function AccountPage() {
             )}
           </Card>
 
-          {/* Quick Demo Switcher */}
-          <div className="space-y-3 pt-2">
-            <span className="text-xs text-[#a4a097] uppercase tracking-wider block text-center">
-              Akses Instan Demo (Mode Pengujian)
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleQuickCandidate}
-                className="text-xs border-[#d6b6f6] bg-[#fdf9ff] hover:bg-[#e6e0f5] h-9 inline-flex items-center gap-1.5"
-              >
-                <User className="size-3.5" /> Masuk sbg Kandidat
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleQuickEmployer}
-                className="text-xs border-[#fed0af] bg-[#fffaf5] hover:bg-[#ffe8d4] h-9 inline-flex items-center gap-1.5"
-              >
-                <Building2 className="size-3.5" /> Masuk sbg Employer
-              </Button>
-            </div>
-          </div>
         </>
       )}
     </div>

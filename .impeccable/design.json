@@ -1,0 +1,8 @@
+{
+  "name": "JobX Evidence-first workspace",
+  "source": "User supplied JobX-project.zip",
+  "colors": { "primary": "#5645d4", "canvas": "#ffffff", "surface": "#f6f5f4", "ink": "#1a1a1a", "secondary": "#68655f", "border": "#e5e3df", "lavender": "#e6e0f5", "mint": "#d9f3e1", "peach": "#ffe8d4", "rose": "#fde0ec" },
+  "radii": { "button": "8px", "card": "11px", "container": "12px" },
+  "breakpoints": { "tablet": "960px", "mobile": "700px" },
+  "typography": { "workspaceHeading": "30px", "body": "14px", "metadata": "11px" }
+}

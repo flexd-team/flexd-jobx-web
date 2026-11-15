@@ -60,64 +60,21 @@ async def generate_job_description(db, schema: GenerateJobInput, actor: User):
                             "skill_id": req.skill_id,
                             "skill_name": req.skill_name,
                             "requirement_type": req.requirement_type,
-                            "weight": str(req.weight),
+                            "weight": "1.0",
                         }
-                        for req in result.draft.requirements
+                        for req in result.requirements
                     ],
                 },
                 "limitations": result.limitations,
             }
-    except Exception as exc:
-        logger.warning("LLM Job Descriptor fallback invoked: %s", exc)
+    except Exception:
+        logger.warning("Job description generation failed")
+        raise AppError(
+            503,
+            "Draft generation unavailable",
+            {"job_draft": "Check model configuration or write manually"},
+        ) from None
 
-    # Heuristic fallback if LLM endpoint encounters an issue
-    title = "Backend Engineer"
-    lower_bp = schema.business_problem.lower()
-    if "frontend" in lower_bp or "react" in lower_bp:
-        title = "Frontend Developer"
-    elif "fullstack" in lower_bp:
-        title = "Fullstack Developer"
-    elif "microservice" in lower_bp or "api" in lower_bp or "inventaris" in lower_bp:
-        title = "Backend Engineer - Sistem Inventaris"
-
-    detected_reqs = []
-    for s in skills:
-        name_lower = s.canonical_name.lower()
-        if name_lower in lower_bp:
-            detected_reqs.append(
-                {
-                    "skill_id": str(s.id),
-                    "skill_name": s.canonical_name,
-                    "requirement_type": "must_have",
-                    "weight": "1.0",
-                }
-            )
-
-    if not detected_reqs and skills:
-        detected_reqs = [
-            {
-                "skill_id": str(skills[0].id),
-                "skill_name": skills[0].canonical_name,
-                "requirement_type": "must_have",
-                "weight": "1.0",
-            }
-        ]
-
-    summary = f"Membangun dan mengembangkan solusi sistem untuk: {schema.business_problem[:150]}..."
-    desc = (
-        f"## Tanggung Jawab\n"
-        f"- Mengembangkan layanan andal untuk menyelesaikan: {schema.business_problem}\n"
-        f"- Mengimplementasikan API, integrasi basis data, dan arsitektur handal.\n\n"
-        f"## Kualifikasi\n"
-        f"- Memiliki portofolio dan bukti kode yang dapat ditinjau.\n"
-        f"- Berpengalaman dengan teknologi backend dan database modern."
+    raise AppError(
+        503, "Draft generation unavailable", {"job_draft": "No reviewable draft returned"}
     )
-    return {
-        "draft": {
-            "suggested_title": title,
-            "job_summary": summary,
-            "job_description": desc,
-            "requirements": detected_reqs,
-        },
-        "limitations": ["Generated via smart heuristic fallback"],
-    }

@@ -1,289 +1,355 @@
-import type { ReactNode } from 'react'
-import { Link, useLocation } from 'react-router-dom'
-import { User, Building2 } from 'lucide-react'
-import { useAppSelector } from '@/hooks/use-app-selector'
-import { useAppDispatch } from '@/hooks/use-app-dispatch'
-import { clearSession, setSession } from '@/redux/slices/auth-slice'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import logo from '@/assets/jobx-logo.png'
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import {
+  ArrowRight,
+  BriefcaseBusiness,
+  Building2,
+  Compass,
+  Fingerprint,
+  FolderGit2,
+  Heart,
+  House,
+  Link2,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  Search,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  X,
+} from "lucide-react";
+import { useAppSelector } from "@/hooks/use-app-selector";
+import { useAppDispatch } from "@/hooks/use-app-dispatch";
+import { clearSession } from "@/redux/slices/auth-slice";
+
+const candidateNav = [
+  { to: "/candidate/overview", label: "Overview", icon: House },
+  { to: "/candidate/profile", label: "My Profile", icon: Fingerprint },
+  { to: "/candidate/artifacts", label: "Smart Artifacts", icon: FolderGit2 },
+  { to: "/candidate/evidence", label: "Skill Evidence", icon: Sparkles },
+  { to: "/candidate/jobs", label: "Find Jobs", icon: Compass },
+  { to: "/candidate/matches", label: "My Matches", icon: Heart },
+];
+const employerNav = [
+  { to: "/employer/overview", label: "Overview", icon: House },
+  { to: "/employer/company", label: "Company Profile", icon: Building2 },
+  { to: "/employer/my-jobs", label: "My Jobs", icon: BriefcaseBusiness },
+  { to: "/employer/create-job", label: "Create Job", icon: Sparkles },
+  { to: "/employer/candidates", label: "Find Candidates", icon: Users },
+  { to: "/employer/matches", label: "Matches", icon: Heart },
+];
+const adminNav = [
+  { to: "/admin/overview", label: "Overview", icon: House },
+  { to: "/admin/users", label: "User Management", icon: Users },
+  { to: "/admin/skills", label: "Skill Management", icon: ShieldCheck },
+  { to: "/admin/aliases", label: "Skill Aliases", icon: Link2 },
+];
+
+export function JobXLogo() {
+  return (
+    <span className="jx-logo">
+      <svg viewBox="0 0 38 34" aria-hidden="true">
+        <path
+          d="M3 4h13v17c0 7-4 10-10 10H2v-7h3c3 0 4-1 4-4v-9H3z"
+          fill="currentColor"
+        />
+        <path
+          d="m18 4 6 9 5-9h7L27 17l9 14h-8l-5-8-5 8h-7l9-14-8-13z"
+          fill="#5645d4"
+        />
+      </svg>
+      <span>
+        Job<span className="jx-purple">X</span>
+      </span>
+    </span>
+  );
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const location = useLocation()
-  const dispatch = useAppDispatch()
-  const { token, accountType, user } = useAppSelector((s) => s.auth)
-
-  const navItems = [
-    { label: 'Beranda', href: '/' },
-    { label: 'Workspace Kandidat', href: '/workspace' },
-    { label: 'Job Studio', href: '/jobs' },
-    { label: 'Profil', href: '/profile' },
-    { label: 'GitHub OAuth', href: '/github' },
-  ]
-
-  const handleSimulateCandidate = () => {
-    dispatch(
-      setSession({
-        token: 'dev-token-candidate-2',
-        accountType: 'candidate',
-        user: {
-          id: '2',
-          name: 'Ihsan Nul Amri',
-          email: 'candidate@example.com',
-          account_type: 'candidate',
-        },
-      }),
+  const { pathname } = useLocation();
+  const dispatch = useAppDispatch();
+  const { token, accountType, user } = useAppSelector((s) => s.auth);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar || typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(max-width: 700px)");
+    const sync = () => {
+      sidebar.inert = media.matches && !mobileOpen;
+    };
+    sync();
+    if (
+      !mobileOpen &&
+      media.matches &&
+      sidebar.contains(document.activeElement)
     )
-  }
+      menuRef.current?.focus();
+    media.addEventListener("change", sync);
+    if (mobileOpen)
+      sidebar.querySelector<HTMLButtonElement>(".jx-mobile-close")?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (!mobileOpen || !media.matches) return;
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+        menuRef.current?.focus();
+      }
+      if (event.key === "Tab") {
+        const elements = [
+          ...sidebar.querySelectorAll<HTMLElement>(
+            "a[href], button:not([disabled])",
+          ),
+        ].filter((element) => element.getClientRects().length > 0);
+        const first = elements[0],
+          last = elements.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", keydown);
+    const previous = document.body.style.overflow;
+    if (mobileOpen && media.matches) document.body.style.overflow = "hidden";
+    return () => {
+      media.removeEventListener("change", sync);
+      document.removeEventListener("keydown", keydown);
+      document.body.style.overflow = previous;
+    };
+  }, [mobileOpen, pathname]);
+  const workspace =
+    /^\/(candidate|employer|admin)(\/|$)/.test(pathname) ||
+    pathname === "/github";
+  const role =
+    accountType === "admin"
+      ? "admin"
+      : accountType === "employer"
+        ? "employer"
+        : "candidate";
+  const nav =
+    role === "admin"
+      ? adminNav
+      : role === "employer"
+        ? employerNav
+        : candidateNav;
+  const current =
+    nav.find((item) => item.to === pathname)?.label ??
+    (pathname.endsWith("settings") ? "Settings" : "GitHub");
+  const name = user?.name || user?.email || "Akun JobX";
 
-  const handleSimulateEmployer = () => {
-    dispatch(
-      setSession({
-        token: 'dev-token-employer-3',
-        accountType: 'employer',
-        user: {
-          id: '3',
-          name: 'Tech Talent Recruiter',
-          email: 'employer@example.com',
-          account_type: 'employer',
-        },
-      }),
-    )
-  }
+  if (!workspace)
+    return (
+      <div className="jx-public">
+        <a className="jx-skip" href="#main-content">
+          Lewati navigasi
+        </a>
+        <header className="jx-public-header">
+          <Link to="/" aria-label="JobX beranda">
+            <JobXLogo />
+          </Link>
+          <nav aria-label="Navigasi publik">
+            <a href="/#cara-kerja">Cara kerja</a>
+            <a href="/#untuk-perusahaan">Untuk perusahaan</a>
+          </nav>
+          <div className="jx-actions">
+            <Link to="/account">Masuk</Link>
+            <Link
+              className="jx-button primary"
+              to={token ? `/${role}/overview` : "/account?mode=register"}
+            >
+              {token ? "Buka workspace" : "Mulai sekarang"}
+              <ArrowRight size={15} />
+            </Link>
+          </div>
+        </header>
+        <main id="main-content">{children}</main>
+        <footer className="jx-public-footer">
+          <JobXLogo />
+          <p>Karya nyata. Bukti yang bisa ditinjau. Peluang yang relevan.</p>
+          <span>© {new Date().getFullYear()} JobX</span>
+        </footer>
+      </div>
+    );
 
   return (
-    <div className="min-h-screen bg-white text-[#37352f] flex flex-col font-sans selection:bg-[#d6b6f6]">
-      {/* Top Breadcrumb & Document Bar */}
-      <header className="sticky top-0 z-40 border-b border-[#e5e3df] bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 py-2.5">
-          {/* Breadcrumbs */}
-          <div className="flex items-center gap-2 text-sm text-[#787671]">
-            <Link
-              to="/"
-              className="flex items-center gap-2 font-medium text-[#37352f] hover:opacity-90 transition-opacity"
-            >
-              <img src={logo} alt="JobX" className="h-7 w-auto object-contain" />
-              <span className="sr-only">JobX</span>
-            </Link>
-            <span className="text-[#a4a097]">/</span>
-            <span className="hidden sm:inline font-mono text-xs text-[#5d5b54]">workspace</span>
-            {accountType && (
-              <>
-                <span className="text-[#a4a097]">/</span>
-                <Badge
-                  variant={accountType === 'candidate' ? 'lavender' : 'peach'}
-                  className="font-normal inline-flex items-center gap-1"
-                >
-                  {accountType === 'candidate' ? (
-                    <>
-                      <User className="size-3" /> Kandidat
-                    </>
-                  ) : (
-                    <>
-                      <Building2 className="size-3" /> Employer
-                    </>
-                  )}
-                </Badge>
-              </>
-            )}
-          </div>
-
-          {/* Nav links */}
-          <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
-            {navItems.map((item) => {
-              const active = location.pathname === item.href
-              return (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  className={`rounded-md px-3 py-1.5 transition-colors ${
-                    active
-                      ? 'bg-[#f6f5f4] text-[#1a1a1a] font-semibold'
-                      : 'text-[#5d5b54] hover:bg-[#f6f5f4] hover:text-[#1a1a1a]'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              )
-            })}
-          </nav>
-
-          {/* Role status and Simulator / Auth */}
-          <div className="flex items-center gap-2">
-            {token ? (
-              <div className="flex items-center gap-2">
-                <span className="hidden lg:inline text-xs text-[#787671] truncate max-w-[140px]">
-                  {user?.name || user?.email || 'User'}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => dispatch(clearSession())}
-                  className="text-xs text-[#787671] hover:text-[#e03131]"
-                >
-                  Keluar
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSimulateCandidate}
-                  title="Simulasi login sebagai Kandidat"
-                  className="text-xs border-[#d6b6f6] bg-[#fdf9ff] hover:bg-[#e6e0f5] inline-flex items-center gap-1"
-                >
-                  <User className="size-3.5" /> Kandidat
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSimulateEmployer}
-                  title="Simulasi login sebagai Employer"
-                  className="text-xs border-[#fed0af] bg-[#fffaf5] hover:bg-[#ffe8d4] inline-flex items-center gap-1"
-                >
-                  <Building2 className="size-3.5" /> Employer
-                </Button>
-                <Link to="/account">
-                  <Button variant="primary" size="sm" className="text-xs">
-                    Masuk
-                  </Button>
-                </Link>
-              </div>
-            )}
+    <div className={`jx-app ${collapsed ? "is-collapsed" : ""}`}>
+      <a className="jx-skip" href="#main-content">
+        Lewati navigasi
+      </a>
+      {mobileOpen && (
+        <button
+          className="jx-scrim"
+          aria-label="Tutup navigasi"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <aside
+        ref={sidebarRef}
+        className={`jx-sidebar ${mobileOpen ? "is-open" : ""}`}
+        aria-label="Workspace"
+      >
+        <div className="jx-brand-row">
+          <Link to={`/${role}/overview`} aria-label="JobX overview">
+            <JobXLogo />
+          </Link>
+          <button
+            className="jx-icon-button jx-collapse"
+            aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            <PanelLeftClose size={17} />
+          </button>
+          <button
+            className="jx-icon-button jx-mobile-close"
+            aria-label="Tutup navigasi"
+            onClick={() => setMobileOpen(false)}
+          >
+            <X size={19} />
+          </button>
+        </div>
+        <div className="jx-workspace-account">
+          <span className="jx-avatar">{name.slice(0, 2).toUpperCase()}</span>
+          <div>
+            <strong>
+              {role === "admin"
+                ? "JobX Operations"
+                : role === "employer"
+                  ? "Company workspace"
+                  : "Personal workspace"}
+            </strong>
+            <small>
+              {role === "admin"
+                ? "Administrator"
+                : role === "employer"
+                  ? "Employer account"
+                  : "Candidate account"}
+            </small>
           </div>
         </div>
-
-        {/* Mobile Navigation bar */}
-        <div className="md:hidden flex overflow-x-auto border-t border-[#ede9e4] px-4 py-1.5 gap-2 text-xs">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              to={item.href}
-              className={`shrink-0 rounded px-2.5 py-1 ${
-                location.pathname === item.href
-                  ? 'bg-[#f6f5f4] text-black font-semibold'
-                  : 'text-[#5d5b54]'
-              }`}
+        <Link
+          className="jx-sidebar-search"
+          to={
+            role === "candidate"
+              ? "/candidate/jobs"
+              : role === "employer"
+                ? "/employer/candidates"
+                : "/admin/users"
+          }
+          onClick={() => setMobileOpen(false)}
+        >
+          <Search size={16} />
+          <span>
+            {role === "candidate"
+              ? "Cari peluang kerja"
+              : role === "employer"
+                ? "Cari kandidat"
+                : "Cari pengguna"}
+          </span>
+        </Link>
+        <p className="jx-nav-caption">Workspace</p>
+        <nav className="jx-nav" aria-label="Navigasi workspace">
+          {nav.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              title={label}
+              onClick={() => setMobileOpen(false)}
+              className={({ isActive }) =>
+                `jx-nav-item ${isActive ? "active" : ""}`
+              }
             >
-              {item.label}
-            </Link>
+              <Icon size={18} />
+              <span>{label}</span>
+            </NavLink>
           ))}
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main id="main-content" className="flex-1 w-full">
-        {children}
-      </main>
-
-      {/* Notion Multi-Column Footer */}
-      <footer className="border-t border-[#e5e3df] bg-[#fafaf9] py-12 px-6">
-        <div className="mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-4 gap-8 text-sm">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 font-semibold text-base text-[#1a1a1a]">
-              <img src={logo} alt="JobX" className="h-6 w-auto object-contain" />
-              <span className="sr-only">JobX</span>
-            </div>
-            <p className="text-xs text-[#787671] leading-relaxed">
-              Platform pembuktian skill nyata dan rekrutmen berbasis bukti kode untuk talenta dan
-              perusahaan modern.
+        </nav>
+        <div className="jx-sidebar-bottom">
+          <div className="jx-sidebar-note">
+            <Sparkles size={19} />
+            <strong>Let your work speak.</strong>
+            <p>
+              Project kecil, potensi besar.
+              <br />
+              Mulai dari karya yang kamu punya.
             </p>
-            <div className="pt-2">
-              <Badge variant="mint" className="text-[11px]">
-                ● Model AI: Gemini 2.5 Flash Lite
-              </Badge>
-            </div>
+            <Link
+              to={
+                role === "candidate"
+                  ? "/candidate/artifacts"
+                  : role === "employer"
+                    ? "/employer/create-job"
+                    : "/admin/skills"
+              }
+            >
+              Ambil langkah pertama <ArrowRight size={14} />
+            </Link>
           </div>
-
-          <div>
-            <h4 className="font-semibold text-xs text-[#a4a097] uppercase tracking-wider mb-3">
-              Fitur Kandidat
-            </h4>
-            <ul className="space-y-2 text-xs text-[#5d5b54]">
-              <li>
-                <Link to="/workspace" className="hover:text-black">
-                  Analisis Repository GitHub
-                </Link>
-              </li>
-              <li>
-                <Link to="/workspace" className="hover:text-black">
-                  Ekstraksi Skill Evidence
-                </Link>
-              </li>
-              <li>
-                <Link to="/workspace" className="hover:text-black">
-                  Rekomendasi Pekerjaan Otomatis
-                </Link>
-              </li>
-              <li>
-                <Link to="/profile" className="hover:text-black">
-                  Profil & Portofolio
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold text-xs text-[#a4a097] uppercase tracking-wider mb-3">
-              Fitur Employer
-            </h4>
-            <ul className="space-y-2 text-xs text-[#5d5b54]">
-              <li>
-                <Link to="/jobs" className="hover:text-black">
-                  Smart AI Job Descriptor
-                </Link>
-              </li>
-              <li>
-                <Link to="/jobs" className="hover:text-black">
-                  Manajemen Lowongan
-                </Link>
-              </li>
-              <li>
-                <Link to="/jobs" className="hover:text-black">
-                  Two-Way Matching Engine
-                </Link>
-              </li>
-              <li>
-                <Link to="/jobs" className="hover:text-black">
-                  Inspeksi Bukti Kandidat
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold text-xs text-[#a4a097] uppercase tracking-wider mb-3">
-              Integrasi & Sistem
-            </h4>
-            <ul className="space-y-2 text-xs text-[#5d5b54]">
-              <li>
-                <Link to="/github" className="hover:text-black">
-                  GitHub OAuth & Sync
-                </Link>
-              </li>
-              <li>
-                <span className="text-[#a4a097]">Katalog 20 Canonical Skills</span>
-              </li>
-              <li>
-                <span className="text-[#a4a097]">Sistem Desain Notion (DESIGN.md)</span>
-              </li>
-              <li>
-                <span className="text-[#a4a097]">FastAPI + LangChain + MySQL</span>
-              </li>
-            </ul>
+          <p className="jx-nav-caption">Account</p>
+          <NavLink
+            className="jx-nav-item"
+            to={`/${role}/settings`}
+            onClick={() => setMobileOpen(false)}
+          >
+            <Settings2 size={18} />
+            <span>Settings</span>
+          </NavLink>
+          <div className="jx-sidebar-user">
+            <span className="jx-avatar">{name.slice(0, 2).toUpperCase()}</span>
+            <span className="jx-user-name">
+              <strong>{name}</strong>
+              <small>{user?.email}</small>
+            </span>
+            <button
+              className="jx-icon-button"
+              title="Keluar dari browser ini"
+              aria-label="Keluar dari browser ini"
+              onClick={() => dispatch(clearSession())}
+            >
+              <LogOut size={17} />
+            </button>
           </div>
         </div>
-
-        <div className="mx-auto max-w-7xl mt-8 pt-6 border-t border-[#ede9e4] flex flex-col sm:flex-row items-center justify-between text-xs text-[#a4a097] gap-3">
-          <p>© 2026 JobX by FLEXD. Dibangun sesuai prinsip verifikasi bukti skill dan desain Notion.</p>
-          <div className="flex gap-4">
-            <span>Privasi</span>
-            <span>Ketentuan Layanan</span>
-            <span>Dokumentasi API</span>
+      </aside>
+      <div className="jx-workspace">
+        <header className="jx-topbar">
+          <div className="jx-actions">
+            <button
+              ref={menuRef}
+              className="jx-icon-button jx-mobile-menu"
+              aria-label="Buka navigasi"
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen(true)}
+            >
+              <Menu size={19} />
+            </button>
+            <span className="jx-breadcrumb">
+              {role === "employer"
+                ? "Company workspace"
+                : role === "admin"
+                  ? "JobX Operations"
+                  : "Personal workspace"}
+              <span>/</span>
+              <strong>{current}</strong>
+            </span>
           </div>
-        </div>
-      </footer>
+          <span className="jx-topbar-note">
+            <ShieldCheck size={14} /> Evidence-first workspace
+          </span>
+        </header>
+        <main className="jx-main" id="main-content">
+          {children}
+        </main>
+        <footer className="jx-workspace-footer">
+          JobX · Keputusan tetap di tangan manusia.
+        </footer>
+      </div>
     </div>
-  )
+  );
 }

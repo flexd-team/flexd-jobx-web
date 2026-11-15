@@ -23,10 +23,11 @@ from app.models import (
     User,
 )
 from app.schemas.artifact import ArtifactRead, Visibility
+from app.schemas.artifact_contribution import ArtifactContributionRead
 from app.schemas.candidate_profile import CandidateProfileRead
 from app.schemas.company_profile import CompanyProfileRead
 from app.schemas.job_match import JobMatchRead
-from app.schemas.job_post import JobPostRead
+from app.schemas.job_post import JobPostRead, JobPostUpdate
 from app.services.artifact_processing_service import (
     queue_artifact_analysis,
     run_artifact_analysis,
@@ -40,10 +41,27 @@ from app.services.match_generation_service import (
     get_job_matches_for_employer,
     submit_match_decision,
 )
+from app.services.owned_contribution_service import OwnedContributionInput, save_owned_contribution
+from app.services.self_service_job_service import update_owned_job
 from app.utils.exceptions import AppError
 from app.utils.responses import item_response, list_response
 
 router = APIRouter(tags=["domain-workflows"])
+
+
+@router.post("/my/artifacts/{artifact_id}/contribution")
+async def save_my_contribution(
+    artifact_id: int,
+    schema: OwnedContributionInput,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    record = await save_owned_contribution(db, artifact_id, schema, user)
+    return item_response(
+        "Contribution saved",
+        "artifact_contribution",
+        ArtifactContributionRead.model_validate(record),
+    )
 
 
 # --- Schemas ---
@@ -401,6 +419,11 @@ async def review_skill_evidence(
     if artifact is None or (user.account_type != "admin" and artifact.owner_user_id != user.id):
         raise AppError(403, "Access denied", {"auth": "You do not own this artifact evidence"})
 
+    if evidence.review_status == "reviewer_verified" and user.account_type != "admin":
+        raise AppError(
+            409, "Evidence already verified", {"review_status": "Admin verification is protected"}
+        )
+
     evidence.review_status = schema.review_status
     await db.commit()
     await db.refresh(evidence)
@@ -485,6 +508,12 @@ async def create_my_job_post(
 ):
     if user.account_type not in {"employer", "admin"}:
         raise AppError(403, "Access denied", {"auth": "Employer access required"})
+    if schema.status == "published":
+        raise AppError(
+            409,
+            "Publication approval required",
+            {"status": "Save a draft; publication approval workflow is not configured"},
+        )
 
     job = JobPost(
         user_id=user.id,
@@ -540,25 +569,11 @@ async def create_my_job_post(
 @router.patch("/my/job-posts/{job_id}")
 async def update_my_job_post(
     job_id: int,
-    schema: dict,
+    schema: JobPostUpdate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    job = await db.get(JobPost, job_id)
-    if job is None or (user.account_type != "admin" and job.user_id != user.id):
-        raise AppError(404, "Job not found", {"job_post": "Record does not exist"})
-
-    for field, val in schema.items():
-        if field in {"salary_min", "salary_max"}:
-            setattr(job, field, int(val) if val and str(val).isdigit() else None)
-        elif field == "status" and val == "published" and job.status != "published":
-            job.status = "published"
-            job.published_at = datetime.now(UTC).replace(tzinfo=None)
-        elif hasattr(job, field):
-            setattr(job, field, val)
-
-    await db.commit()
-    await db.refresh(job)
+    job = await update_owned_job(db, job_id, schema, user)
     return item_response("Job updated", "job_post", JobPostRead.model_validate(job))
 
 

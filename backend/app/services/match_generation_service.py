@@ -181,6 +181,7 @@ async def get_job_matches_for_employer(db, job_id: int, employer: User) -> list[
                 .join(Artifact, Artifact.id == ArtifactSkillEvidence.artifact_id)
                 .where(
                     Artifact.owner_user_id == m.candidate_user_id,
+                    Artifact.visibility.in_(["matching_employers", "public"]),
                     ArtifactSkillEvidence.review_status != "rejected",
                 )
                 .limit(10)
@@ -206,9 +207,7 @@ async def get_job_matches_for_employer(db, job_id: int, employer: User) -> list[
                     "email": candidate_user.email
                     if (m.match_status == "mutually_accepted" and candidate_user)
                     else None,
-                    "headline": candidate_profile.headline
-                    if candidate_profile
-                    else "Software Engineer",
+                    "headline": candidate_profile.headline if candidate_profile else None,
                     "city": candidate_profile.city if candidate_profile else None,
                     "years_experience": candidate_profile.years_experience
                     if candidate_profile

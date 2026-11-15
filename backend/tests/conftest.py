@@ -5,12 +5,14 @@ os.environ["APP_ENV"] = "test"
 
 import httpx  # noqa: E402
 import pytest_asyncio  # noqa: E402
+from pydantic import SecretStr  # noqa: E402
 from sqlalchemy import Integer, event  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 from sqlalchemy.schema import MetaData  # noqa: E402
 from sqlalchemy.types import JSON, DateTime, Text  # noqa: E402
 
 from app.configs.database import get_db  # noqa: E402
+from app.configs.settings import get_settings  # noqa: E402
 from app.main import app, application  # noqa: E402
 from app.models import Base, User  # noqa: E402
 from app.utils.rate_limit import attempts, register_attempts  # noqa: E402
@@ -18,8 +20,9 @@ from app.utils.security import create_access_token, hash_password  # noqa: E402
 
 
 @pytest_asyncio.fixture
-async def api():
+async def api(monkeypatch):
     """Portable behavioral tests. Never connects to configured application database."""
+    monkeypatch.setattr(get_settings(), "llm_api_key", SecretStr(""))
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
     @event.listens_for(engine.sync_engine, "connect")

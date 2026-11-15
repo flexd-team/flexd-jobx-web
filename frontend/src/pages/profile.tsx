@@ -1,278 +1,272 @@
-import { useState, useEffect } from 'react'
-import { User, Building2, CheckCircle2 } from 'lucide-react'
-import { useAppSelector } from '@/hooks/use-app-selector'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import { Callout } from '@/components/ui/callout'
-import { apiRequest } from '@/lib/api-client'
-import { z } from 'zod'
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useAppSelector } from "@/hooks/use-app-selector";
+import { apiRequest } from "@/lib/api-client";
+import { PageHeading, ResourceState } from "@/components/portal-ui";
+import { usePortalResource } from "@/hooks/use-portal-resource";
+import { envelope } from "@/schemas/portal";
 
-const genericResponseSchema = z.object({
-  message: z.record(z.string(), z.string()).optional(),
-  error: z.record(z.string(), z.string()).optional(),
-  data: z.record(z.string(), z.any()),
-})
+const profileInput = z.object({
+  headline: z.string().max(150),
+  biography: z.string().max(5000),
+  city: z.string().max(120),
+  country: z.string().min(1).max(100),
+  years_experience: z.number().int().min(0).max(100),
+  preferred_employment_type: z.enum([
+    "full_time",
+    "part_time",
+    "contract",
+    "internship",
+    "freelance",
+    "any",
+  ]),
+  preferred_work_mode: z.enum(["onsite", "hybrid", "remote", "any"]),
+  profile_visibility: z.enum([
+    "public",
+    "registered_only",
+    "matching_employers",
+    "private",
+  ]),
+  name: z.string().max(200),
+  industry: z.string().max(120),
+  description: z.string().max(5000),
+});
+const candidateProfile = z.object({
+  headline: z.string().nullable(),
+  biography: z.string().nullable(),
+  city: z.string().nullable(),
+  country: z.string(),
+  years_experience: z.number().nullable(),
+  preferred_employment_type: z.string(),
+  preferred_work_mode: z.string(),
+  profile_visibility: z.string(),
+});
+const companyProfile = z.object({
+  name: z.string(),
+  industry: z.string().nullable(),
+  description: z.string().nullable(),
+  city: z.string().nullable(),
+  country: z.string(),
+});
+const profileResponse = envelope(
+  z.object({
+    candidate_profile: candidateProfile.nullable().optional(),
+    company_profile: companyProfile.nullable().optional(),
+  }),
+);
 
 export default function ProfilePage() {
-  const { token, accountType } = useAppSelector((s) => s.auth)
-
-  // Candidate fields
-  const [headline, setHeadline] = useState('Fullstack Python Engineer')
-  const [biography, setBiography] = useState(
-    'Pengembang perangkat lunak berpengalaman membangun microservice andal dengan FastAPI, MySQL, dan integrasi AI multimodal.',
-  )
-  const [yearsExperience, setYearsExperience] = useState('3')
-  const [preferredWorkMode, setPreferredWorkMode] = useState('remote')
-  const [preferredEmploymentType, setPreferredEmploymentType] = useState('full_time')
-
-  // Employer fields
-  const [companyName, setCompanyName] = useState('Tech Corp Indonesia')
-  const [industry, setIndustry] = useState('Software Engineering')
-  const [companyDesc, setCompanyDesc] = useState(
-    'Membangun solusi perangkat lunak enterprise modern berbasis microservice dan AI.',
-  )
-
-  const [saving, setSaving] = useState(false)
-  const [statusMsg, setStatusMsg] = useState<string | null>(null)
-
-  // Load existing profile
+  const { token, accountType } = useAppSelector((s) => s.auth);
+  const employer = accountType === "employer";
+  const resource = usePortalResource(
+    employer ? "/my/company-profile" : "/my/candidate-profile",
+    profileResponse,
+  );
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const form = useForm<z.infer<typeof profileInput>>({
+    resolver: zodResolver(profileInput),
+    defaultValues: {
+      headline: "",
+      biography: "",
+      city: "",
+      country: "Indonesia",
+      years_experience: 0,
+      preferred_employment_type: "full_time",
+      preferred_work_mode: "remote",
+      profile_visibility: "matching_employers",
+      name: "",
+      industry: "",
+      description: "",
+    },
+  });
+  const { reset } = form;
   useEffect(() => {
-    if (accountType === 'candidate') {
-      apiRequest('api/v1/candidate-profile/me', genericResponseSchema, { token: token ?? undefined })
-        .then((res) => {
-          const p = res.data?.candidate_profile
-          if (p) {
-            if (p.headline) setHeadline(p.headline)
-            if (p.biography) setBiography(p.biography)
-            if (p.years_experience !== null && p.years_experience !== undefined)
-              setYearsExperience(String(p.years_experience))
-            if (p.preferred_work_mode) setPreferredWorkMode(p.preferred_work_mode)
-            if (p.preferred_employment_type) setPreferredEmploymentType(p.preferred_employment_type)
-          }
-        })
-        .catch(() => {})
-    } else {
-      apiRequest('api/v1/company-profile/me', genericResponseSchema, { token: token ?? undefined })
-        .then((res) => {
-          const cp = res.data?.company_profile
-          if (cp) {
-            if (cp.name) setCompanyName(cp.name)
-            if (cp.industry) setIndustry(cp.industry)
-            if (cp.description) setCompanyDesc(cp.description)
-          }
-        })
-        .catch(() => {})
-    }
-  }, [accountType, token])
-
-  const handleSaveCandidate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    setStatusMsg(null)
-    try {
-      await apiRequest('api/v1/candidate-profile/me', genericResponseSchema, {
-        method: 'POST',
-        token: token ?? undefined,
-        body: {
-          headline,
-          biography,
-          years_experience: Number(yearsExperience) || 0,
-          preferred_work_mode: preferredWorkMode,
-          preferred_employment_type: preferredEmploymentType,
-        },
-      })
-      setStatusMsg('Profil kandidat berhasil disimpan!')
-    } catch {
-      setStatusMsg('Profil berhasil diperbarui secara lokal.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleSaveEmployer = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    setStatusMsg(null)
-    try {
-      await apiRequest('api/v1/company-profile/me', genericResponseSchema, {
-        method: 'POST',
-        token: token ?? undefined,
-        body: {
-          name: companyName,
-          industry,
-          description: companyDesc,
-        },
-      })
-      setStatusMsg('Profil perusahaan berhasil disimpan!')
-    } catch {
-      setStatusMsg('Profil perusahaan berhasil diperbarui secara lokal.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const isCandidate = accountType !== 'employer'
-
+    const profile =
+      resource.data?.data.company_profile ??
+      resource.data?.data.candidate_profile;
+    if (!profile) return;
+    const values = Object.fromEntries(
+      Object.entries(profile).map(([key, value]) => [
+        key,
+        value ?? (key === "years_experience" ? 0 : ""),
+      ]),
+    );
+    reset((previous) => ({ ...previous, ...values }));
+  }, [resource.data, reset]);
   return (
-    <div className="py-8 px-4 sm:px-8 max-w-4xl mx-auto space-y-8">
-      {/* Document Header */}
-      <div className="space-y-3 pb-6 border-b border-[#e5e3df]">
-        <div className="flex items-center gap-3">
-          <div
-            className={`size-10 rounded-lg flex items-center justify-center ${
-              isCandidate ? 'bg-[#e6e0f5] text-[#5645d4]' : 'bg-[#ffe8d4] text-[#793400]'
-            }`}
-          >
-            {isCandidate ? <User className="size-6" /> : <Building2 className="size-6" />}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#1a1a1a]">
-                {isCandidate ? 'Profil Kandidat' : 'Profil Perusahaan'}
-              </h1>
-              <Badge variant={isCandidate ? 'lavender' : 'peach'}>
-                {isCandidate ? 'Candidate' : 'Employer'}
-              </Badge>
-            </div>
-            <p className="text-xs sm:text-sm text-[#787671]">
-              Informasi ini digunakan dalam kartu kecocokan (matching) dan pertimbangan mutual interest.
-            </p>
-          </div>
-        </div>
-
-        {statusMsg && (
-          <Callout variant="mint" icon={<CheckCircle2 className="size-4 text-[#1aae39]" />}>
-            {statusMsg}
-          </Callout>
-        )}
-      </div>
-
-      {isCandidate ? (
-        <Card variant="default" className="p-6">
-          <form onSubmit={handleSaveCandidate} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-[#5d5b54] mb-1">
-                Headline / Posisi Profesional
-              </label>
-              <Input
-                value={headline}
-                onChange={(e) => setHeadline(e.target.value)}
-                placeholder="Contoh: Fullstack Python Engineer (FastAPI / MySQL)"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-[#5d5b54] mb-1">
-                Biografi & Fokus Teknologi
-              </label>
-              <textarea
-                value={biography}
-                onChange={(e) => setBiography(e.target.value)}
-                rows={4}
-                className="w-full rounded-md border border-[#c8c4be] bg-white p-3 text-sm text-[#37352f] focus:border-[#5645d4] focus:outline-none focus:ring-1 focus:ring-[#5645d4]"
-                placeholder="Jelaskan spesialisasi, ketertarikan proyek, dan gaya kerja..."
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-[#5d5b54] mb-1">
-                  Pengalaman (Tahun)
-                </label>
-                <Input
+    <>
+      <PageHeading
+        title={employer ? "Company Profile" : "My Profile"}
+        description={
+          employer
+            ? "Beri kandidat konteks tentang perusahaan, tim, dan kebutuhan Anda."
+            : "Ceritakan pengalaman dan preferensi Anda. Bukti kompetensi tetap berasal dari karya yang bisa ditinjau."
+        }
+      />
+      <ResourceState {...resource} retry={resource.reload} />
+      <form
+        className="jx-form"
+        onSubmit={form.handleSubmit(async (values) => {
+          setError("");
+          setNotice("");
+          if (employer && !values.name.trim()) {
+            form.setError("name", { message: "Nama perusahaan wajib diisi." });
+            return;
+          }
+          const body = employer
+            ? {
+                name: values.name,
+                industry: values.industry,
+                description: values.description,
+                city: values.city,
+                country: values.country,
+              }
+            : {
+                headline: values.headline,
+                biography: values.biography,
+                city: values.city,
+                country: values.country,
+                years_experience: values.years_experience,
+                preferred_employment_type: values.preferred_employment_type,
+                preferred_work_mode: values.preferred_work_mode,
+                profile_visibility: values.profile_visibility,
+              };
+          try {
+            await apiRequest(
+              employer ? "/my/company-profile" : "/my/candidate-profile",
+              profileResponse,
+              { method: "POST", token: token!, body },
+            );
+            setNotice("Profil tersimpan.");
+            resource.reload();
+          } catch (err) {
+            setError(
+              err instanceof Error ? err.message : "Profil gagal disimpan.",
+            );
+          }
+        })}
+      >
+        <h2>{employer ? "Tentang perusahaan" : "Tentang saya"}</h2>
+        <div className="jx-form-grid">
+          {(employer
+            ? (["name", "industry", "description"] as const)
+            : (["headline", "biography"] as const)
+          ).map((field) => (
+            <label
+              className={`jx-field ${field === "biography" || field === "description" ? "full" : ""}`}
+              key={field}
+            >
+              {
+                {
+                  name: "Nama perusahaan",
+                  industry: "Industri",
+                  description: "Deskripsi perusahaan",
+                  headline: "Headline",
+                  biography: "Tentang saya",
+                }[field]
+              }
+              {field === "biography" || field === "description" ? (
+                <textarea className="jx-input" {...form.register(field)} />
+              ) : (
+                <input className="jx-input" {...form.register(field)} />
+              )}
+              <span role="alert">{form.formState.errors[field]?.message}</span>
+            </label>
+          ))}
+          <label className="jx-field">
+            Kota
+            <input className="jx-input" {...form.register("city")} />
+          </label>
+          <label className="jx-field">
+            Negara
+            <input className="jx-input" {...form.register("country")} />
+            <span role="alert">{form.formState.errors.country?.message}</span>
+          </label>
+          {!employer && (
+            <>
+              <label className="jx-field">
+                Pengalaman (tahun)
+                <input
                   type="number"
                   min="0"
-                  max="50"
-                  value={yearsExperience}
-                  onChange={(e) => setYearsExperience(e.target.value)}
+                  max="100"
+                  className="jx-input"
+                  {...form.register("years_experience", {
+                    valueAsNumber: true,
+                  })}
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[#5d5b54] mb-1">Mode Kerja</label>
+                <span role="alert">
+                  {form.formState.errors.years_experience?.message}
+                </span>
+              </label>
+              <label className="jx-field">
+                Preferensi pekerjaan
                 <select
-                  value={preferredWorkMode}
-                  onChange={(e) => setPreferredWorkMode(e.target.value)}
-                  className="w-full h-10 rounded-md border border-[#c8c4be] bg-white px-3 text-sm text-[#37352f]"
+                  className="jx-input"
+                  {...form.register("preferred_employment_type")}
                 >
-                  <option value="remote">Remote</option>
-                  <option value="hybrid">Hybrid</option>
-                  <option value="onsite">Onsite</option>
+                  {profileInput.shape.preferred_employment_type.options.map(
+                    (value) => (
+                      <option key={value}>{value}</option>
+                    ),
+                  )}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[#5d5b54] mb-1">Tipe Kerja</label>
+              </label>
+              <label className="jx-field">
+                Preferensi mode kerja
                 <select
-                  value={preferredEmploymentType}
-                  onChange={(e) => setPreferredEmploymentType(e.target.value)}
-                  className="w-full h-10 rounded-md border border-[#c8c4be] bg-white px-3 text-sm text-[#37352f]"
+                  className="jx-input"
+                  {...form.register("preferred_work_mode")}
                 >
-                  <option value="full_time">Full Time</option>
-                  <option value="contract">Kontrak</option>
-                  <option value="freelance">Freelance</option>
-                  <option value="internship">Magang</option>
+                  {profileInput.shape.preferred_work_mode.options.map(
+                    (value) => (
+                      <option key={value}>{value}</option>
+                    ),
+                  )}
                 </select>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <Button type="submit" variant="primary" disabled={saving} className="text-xs h-9 px-5">
-                {saving ? 'Menyimpan...' : 'Simpan Profil Kandidat'}
-              </Button>
-            </div>
-          </form>
-        </Card>
-      ) : (
-        <Card variant="default" className="p-6">
-          <form onSubmit={handleSaveEmployer} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-[#5d5b54] mb-1">
-                Nama Perusahaan / Bisnis
               </label>
-              <Input
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Contoh: Tech Corp Indonesia"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-[#5d5b54] mb-1">
-                Industri / Bidang Usaha
+              <label className="jx-field">
+                Visibilitas profil
+                <select
+                  className="jx-input"
+                  {...form.register("profile_visibility")}
+                >
+                  {profileInput.shape.profile_visibility.options.map(
+                    (value) => (
+                      <option key={value}>{value}</option>
+                    ),
+                  )}
+                </select>
               </label>
-              <Input
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                placeholder="Contoh: Software Engineering / Financial Tech"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-[#5d5b54] mb-1">
-                Deskripsi Perusahaan
-              </label>
-              <textarea
-                value={companyDesc}
-                onChange={(e) => setCompanyDesc(e.target.value)}
-                rows={4}
-                className="w-full rounded-md border border-[#c8c4be] bg-white p-3 text-sm text-[#37352f] focus:border-[#5645d4] focus:outline-none focus:ring-1 focus:ring-[#5645d4]"
-                placeholder="Jelaskan produk utama, budaya tim, dan visi perusahaan..."
-              />
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <Button type="submit" variant="primary" disabled={saving} className="text-xs h-9 px-5">
-                {saving ? 'Menyimpan...' : 'Simpan Profil Perusahaan'}
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
-    </div>
-  )
+            </>
+          )}
+        </div>
+        <div className="jx-actions">
+          <button
+            className="jx-button primary"
+            disabled={
+              resource.loading ||
+              !!resource.error ||
+              form.formState.isSubmitting
+            }
+          >
+            {form.formState.isSubmitting ? "Menyimpan…" : "Simpan perubahan"}
+          </button>
+        </div>
+        {notice && (
+          <div className="jx-notice success" role="status">
+            {notice}
+          </div>
+        )}
+        {error && (
+          <div className="jx-notice error" role="alert">
+            {error}
+          </div>
+        )}
+      </form>
+    </>
+  );
 }
